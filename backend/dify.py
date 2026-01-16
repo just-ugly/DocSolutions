@@ -114,8 +114,8 @@ def dify_chatflow_request(question: str, user: str, conversation_id: str = "", s
                 event = data.get("event")
 
                 # 输出流式内容
-                if event == "text_chunk":
-                    chunk = data.get("data", "").get("text", "")
+                if event == "message":
+                    chunk = data.get("answer", "")
                     full_answer += chunk
 
                     print(chunk, end="", flush=True)
@@ -154,4 +154,4 @@ def dify_chatflow_request(question: str, user: str, conversation_id: str = "", s
 
 # 测试用
 if __name__ == '__main__':
-    dify_request("番茄鸡蛋汤的做法", stream=True)
+    dify_chatflow_request("番茄鸡蛋汤的做法", user="justugly", stream=True)

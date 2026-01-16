@@ -37,7 +37,7 @@ def dify_request(question: str, stream: bool = False):
                 continue
             if not line.startswith(b"data: "):
                 continue
-            data = json.loads(line[6:].decode("utf-8"))
+            data = json.loads(line[6:])
             event = data.get("event")
 
             # 输出流式内容
@@ -52,7 +52,7 @@ def dify_request(question: str, stream: bool = False):
         return full_answer
 
     else:
-        print("使用非流式流式无记忆模式响应输出中...")
+        print("使用非流式无记忆模式响应输出中...")
         print(f"问题: {question}")
         payload = {
             "inputs": {
@@ -64,8 +64,20 @@ def dify_request(question: str, stream: bool = False):
         response = requests.post(URL, json=payload, headers=headers)
         result = response.json()
 
-        answer = result["data"]["outputs"].get("answer")
-        return answer
+        answer = result["data"]["outputs"]["text"]
+
+        # 去掉 <think> 推理部分
+        after_think = answer.split("</think>")[-1].strip()
+
+        # 去掉 ```json 包裹
+        if after_think.startswith("```"):
+            after_think = after_think.split("```", 1)[-1].strip()
+        if after_think.endswith("```"):
+            after_think = after_think.rsplit("```", 1)[0].strip()
+
+        # 解析 JSON
+        data = json.loads(after_think)
+        return data
 
 
 def dify_chatflow_request(question: str, user: str, conversation_id: str = "", stream: bool = False):
@@ -146,12 +158,24 @@ def dify_chatflow_request(question: str, user: str, conversation_id: str = "", s
         response = requests.post(URL, headers=headers, json=payload)
         result = response.json()
 
-        answer = result["answer"]
+        answer = result.get("answer", "")
         conversation_id = result["conversation_id"]
 
-        return answer, conversation_id
+        # 去掉 <think> 推理部分
+        after_think = answer.split("</think>")[-1].strip()
+
+        # 去掉 ```json 包裹
+        if after_think.startswith("```"):
+            after_think = after_think.split("```", 1)[-1].strip()
+        if after_think.endswith("```"):
+            after_think = after_think.rsplit("```", 1)[0].strip()
+
+        # 解析 JSON
+        data = json.loads(after_think)
+
+        return data, conversation_id
 
 
 # 测试用
 if __name__ == '__main__':
-    dify_chatflow_request("番茄鸡蛋汤的做法", user="justugly", stream=True)
+    dify_chatflow_request("鱼香肉丝的做法", user="human-user")

@@ -43,8 +43,10 @@ def create_docx(data: dict):
 
         # 正文段落
         content_p = doc.add_paragraph()
-        content_run = content_p.add_run(section.get("content", ""))
-        content_run.font.size = Pt(12)
+        for block in section.get("content", []):
+            run = content_p.add_run(block.get("text", ""))
+            run.bold = block.get("bold", False)
+            run.font.size = Pt(12)
 
         content_p.paragraph_format.first_line_indent = Inches(0.3)
         content_p.paragraph_format.line_spacing = 1.5
@@ -120,5 +122,5 @@ def create_docx(data: dict):
 
 
 if __name__ == '__main__':
-    json = dify_request("完整介绍java的多线程用法", stream=True)
+    json = dify_request("完整介绍java的继承用法", stream=True)
     create_docx(json)

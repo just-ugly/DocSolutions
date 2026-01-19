@@ -49,7 +49,18 @@ def dify_request(question: str, stream: bool = False):
             elif event == "error":
                 raise RuntimeError(data)
 
-        return full_answer
+        # 去掉 <think> 推理部分
+        after_think = full_answer.split("</think>")[-1].strip()
+
+        # 去掉 ```json 包裹
+        if after_think.startswith("```"):
+            after_think = after_think.split("```", 1)[-1].strip()
+        if after_think.endswith("```"):
+            after_think = after_think.rsplit("```", 1)[0].strip()
+
+        # 解析 JSON
+        data = json.loads(after_think)
+        return data
 
     else:
         print("使用非流式无记忆模式响应输出中...")
@@ -135,7 +146,20 @@ def dify_chatflow_request(question: str, user: str, conversation_id: str = "", s
                 elif event == "workflow_finished":
                     break
 
-        return full_answer, last_conversation_id
+        # 去掉 <think> 推理部分
+        after_think = full_answer.split("</think>")[-1].strip()
+
+        # 去掉 ```json 包裹
+        if after_think.startswith("```"):
+            after_think = after_think.split("```", 1)[-1].strip()
+        if after_think.endswith("```"):
+            after_think = after_think.rsplit("```", 1)[0].strip()
+
+        # 解析 JSON
+        data = json.loads(after_think)
+
+        return data, last_conversation_id
+
     else:
         if conversation_id != "":
             print("使用非流式响应输出中...")
@@ -178,4 +202,4 @@ def dify_chatflow_request(question: str, user: str, conversation_id: str = "", s
 
 # 测试用
 if __name__ == '__main__':
-    dify_chatflow_request("鱼香肉丝的做法", user="human-user")
+    dify_chatflow_request("鱼香肉丝的做法", user="human-user",stream=True)

@@ -200,7 +200,7 @@ def dify_chatflow_request(question: str, user: str, conversation_id: str = "", s
         return data, conversation_id
 
 
-# 新增：流式生成器，逐步 yield 文本片段，最后 yield 以 __RESULT__ 前缀的解析后 JSON 字符串
+
 def dify_request_stream_generator(question: str):
     """
     与 dify_request(..., stream=True) 行为类似，但会将每个文本片段 yield 出来，

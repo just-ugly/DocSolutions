@@ -70,7 +70,8 @@ export default {
       ],
       isLoading: false,
       error: null,
-      finalResult: null
+      finalResult: null,
+      currentAbortController: null
     };
   },
   methods: {
@@ -87,20 +88,38 @@ export default {
         return;
       }
 
-      // push user message and clear input
+      // Abort any previous pending request/stream
+      try {
+        if (this.currentAbortController) {
+          this.currentAbortController.abort();
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      // clear previous final result and push new messages
+      this.finalResult = null;
       this.messages.push({ sender: 'user', content: q });
       this.question = '';
-
-      // prepare bot message placeholder
+      // remove any trailing empty bot placeholders from prior aborted requests
+      for (let i = this.messages.length - 1; i >= 0; i--) {
+        if (this.messages[i].sender === 'bot' && (!this.messages[i].content || this.messages[i].content.trim() === '')) {
+          this.messages.splice(i, 1);
+        } else break;
+      }
       this.messages.push({ sender: 'bot', content: '' });
 
       this.isLoading = true;
 
       try {
+        // create a new AbortController for this request so we can cancel it if a new send happens
+        const controller = new AbortController();
+        this.currentAbortController = controller;
         const res = await fetch('/api/ask', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: q, stream: true })
+          body: JSON.stringify({ question: q, stream: true }),
+          signal: controller.signal
         });
 
         if (!res.ok) {
@@ -186,9 +205,18 @@ export default {
         }
 
       } catch (e) {
+        // if aborted, do not treat as error
+        if (e && e.name === 'AbortError') {
+          // aborted by a new request; just return
+          return;
+        }
         this.error = String(e);
       } finally {
         this.isLoading = false;
+        // clear and release controller
+        if (this.currentAbortController) {
+          try { this.currentAbortController = null; } catch (e) {}
+        }
       }
     },
 
@@ -300,20 +328,48 @@ export default {
           }
           const blob = await res.blob();
           const cd = res.headers.get('content-disposition') || '';
-          let filename = (this.finalResult.title || 'result') + '.docx';
-          const m = /filename\*?=([^;]+)/i.exec(cd);
-          if (m) filename = m[1].trim().replace(/"/g, '');
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          URL.revokeObjectURL(url);
-        }).catch(e => this.error = String(e));
-        return;
-      }
+
+          // helper to parse Content-Disposition header robustly
+          const parseFilenameFromContentDisposition = (cdHeader) => {
+            if (!cdHeader) return null;
+            // try filename* (RFC5987) first (may be percent-encoded)
+            const filenameStarMatch = cdHeader.match(/filename\*=(?:[\w-]+''?)?([^;\n]+)/i);
+            if (filenameStarMatch && filenameStarMatch[1]) {
+              let raw = filenameStarMatch[1].trim();
+              // strip surrounding quotes (' or ")
+              raw = raw.replace(/^['"]|['"]$/g, '');
+              try {
+                return decodeURIComponent(raw);
+              } catch (e) {
+                return raw;
+              }
+            }
+
+            // fallback to filename=
+            const filenameMatch = cdHeader.match(/filename=([^;\n]+)/i);
+            if (filenameMatch && filenameMatch[1]) {
+              let raw = filenameMatch[1].trim();
+              raw = raw.replace(/^['"]|['"]$/g, '');
+              return raw;
+            }
+
+            return null;
+          };
+
+          let filename = parseFilenameFromContentDisposition(cd) || (this.finalResult.title || 'result') + '.docx';
+          // strip any path components just in case
+          filename = filename.split(/[\\\/]/).pop();
+           const url = URL.createObjectURL(blob);
+           const a = document.createElement('a');
+           a.href = url;
+           a.download = filename;
+           document.body.appendChild(a);
+           a.click();
+           a.remove();
+           URL.revokeObjectURL(url);
+         }).catch(e => this.error = String(e));
+         return;
+       }
 
       const content = this.messages.filter(m => m.sender === 'bot').map(m => m.content).join('\n');
       const blob = new Blob([content], { type: 'text/plain' });

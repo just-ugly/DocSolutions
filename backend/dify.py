@@ -200,6 +200,72 @@ def dify_chatflow_request(question: str, user: str, conversation_id: str = "", s
         return data, conversation_id
 
 
+# 新增：流式生成器，逐步 yield 文本片段，最后 yield 以 __RESULT__ 前缀的解析后 JSON 字符串
+def dify_request_stream_generator(question: str):
+    """
+    与 dify_request(..., stream=True) 行为类似，但会将每个文本片段 yield 出来，
+    最后输出一条以 __RESULT__ 开头的字符串，后面紧跟解析后的 JSON（字符串形式），
+    便于前端在接收完流后拿到结构化数据用于生成文档或下载。
+    """
+    API_KEY = "app-1IwfITLttFa7sNpXP26AN3YN"
+    URL = "https://api.dify.ai/v1/workflows/run"
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "inputs": {
+            "question": question
+        },
+        "response_mode": "streaming",
+        "user": "human-user"
+    }
+
+    response = requests.post(URL, headers=headers, json=payload, stream=True)
+
+    full_answer = ""
+
+    try:
+        for line in response.iter_lines():
+            if not line:
+                continue
+            if not line.startswith(b"data: "):
+                continue
+            data = json.loads(line[6:])
+            event = data.get("event")
+
+            if event == "text_chunk":
+                chunk = data["data"].get("text", "")
+                full_answer += chunk
+                # 直接将文本片段 yield 给调用方（HTTP 响应流）
+                yield chunk
+            elif event == "error":
+                # 将错误信息以 JSON 字符串形式 yield 出来并结束
+                yield json.dumps({"error": data})
+                return
+    except Exception as e:
+        yield json.dumps({"error": str(e)})
+        return
+
+    # 处理最终的完整回答，去掉 <think> 和 ```json 包裹并解析为 JSON
+    after_think = full_answer.split("</think>")[-1].strip()
+
+    if after_think.startswith("```"):
+        after_think = after_think.split("```", 1)[-1].strip()
+    if after_think.endswith("```"):
+        after_think = after_think.rsplit("```", 1)[0].strip()
+
+    try:
+        parsed = json.loads(after_think)
+    except Exception:
+        # 如果解析失败，把原始文本作为结果返回（不中断前端显示）
+        parsed = {"text": after_think}
+
+    # 最后将解析后的 JSON 作为一个单独的标记发送，前端可检测到这个前缀并处理为最终结构化结果
+    yield "__RESULT__" + json.dumps(parsed, ensure_ascii=False)
+
+
 # 测试用
 if __name__ == '__main__':
-    dify_chatflow_request("鱼香肉丝的做法", user="human-user",stream=True)
+    dify_request("鱼香肉丝的做法", stream=True)

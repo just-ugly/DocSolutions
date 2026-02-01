@@ -59,11 +59,55 @@
         </div>
       </div>
 
-      <div class="input-bar">
-        <input v-model="question" @keyup.enter="send" :disabled="isLoading" placeholder="输入你的问题，按回车发送" />
-        <div class="right-buttons">
-          <button :disabled="isLoading || !question.trim()">发送</button>
-          <button @click="send" :disabled="isLoading || !question.trim()">生成</button>
+      <!-- compose area: expand button + optional panel above input bar -->
+      <div class="compose-area">
+        <button class="expand-btn" @click="toggleExpand" :aria-expanded="panelExpanded" :title="panelExpanded ? '收起选项' : '展开更多选项'">
+          <!-- inverted V path to indicate expanded/up -->
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M7 15l5-5 5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+
+        <div class="expand-panel" v-if="panelExpanded">
+          <div class="top-fields">
+            <div class="field"><label>问题输出 (Query)</label><input class="main-input" v-model="question" :disabled="isLoading" /></div>
+            <div class="field"><label>目录 (Menu)</label><input v-model="menu" /></div>
+            <div class="field"><label>提纲 (Outline)</label><textarea v-model="outline"></textarea></div>
+            <div class="field"><label>示例 (Example)</label><textarea v-model="example"></textarea></div>
+          </div>
+
+          <div class="two-cols">
+            <div class="left-col">
+              <label>预期文档字数</label>
+              <input type="number" v-model.number="file_num" min="1" placeholder="仅数字" />
+
+              <label>预期文档文风</label>
+              <select v-model="style">
+                <option value="">不指定</option>
+                <option value="技术说明">技术说明</option>
+                <option value="学术论文">学术论文</option>
+                <option value="营销">营销</option>
+                <option value="新闻">新闻</option>
+                <option value="日常">日常</option>
+              </select>
+
+              <label class="checkbox-row"><input type="checkbox" v-model="first_page_toc" /> 第一页是否生成目录</label>
+            </div>
+
+            <div class="right-col">
+              <div class="dropzone" @dragover.prevent="onDragOver" @dragleave.prevent="onDragLeave" @drop.prevent="onDrop" @click="triggerFileInput">
+                <input ref="fileInput" type="file" multiple style="display:none" @change="onFileInputChange" />
+                <div class="dropzone-inner">
+                  <p>点击添加文件，或将文件拖动于此</p>
+                  <p v-if="docFiles.length" class="added-list">已添加: <span v-for="(f,i) in docFiles" :key="i">{{ f.name }}<span v-if="i < docFiles.length - 1">, </span></span></p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="input-bar">
+          <input class="main-input" v-model="question" @keyup.enter="send(false)" :disabled="isLoading" placeholder="输入你的问题，按回车发送" />
+          <button class="btn-send" @click="send(false)" :disabled="isLoading || !question.trim()">发送</button>
+          <button class="btn-gen" @click="send(true)" :disabled="isLoading || !question.trim()">生成</button>
         </div>
       </div>
     </main>
@@ -84,7 +128,17 @@ export default {
       finalResult: null,
       currentAbortController: null,
       // theme: 'dark' or 'light'
-      theme: 'dark'
+      theme: 'dark',
+      // new UI state for expanded options
+      panelExpanded: false,
+      menu: '',
+      outline: '',
+      example: '',
+      file_num: null,
+      style: '',
+      first_page_toc: false,
+      docFiles: [],
+      fileDropOver: false
     };
   },
   created() {
@@ -125,7 +179,43 @@ export default {
       return this.messages.some(m => m.sender === 'bot' && (m.content || '').trim().length > 0);
     },
 
-    async send() {
+    toggleExpand() {
+      this.panelExpanded = !this.panelExpanded;
+    },
+
+    triggerFileInput() {
+      try { this.$refs.fileInput.click(); } catch (e) {}
+    },
+
+    onFileInputChange(e) {
+      const files = Array.from(e.target.files || []);
+      if (files.length) {
+        // append, but keep only metadata for now
+        this.docFiles.push(...files);
+      }
+      // clear the native input so selecting same file again still fires
+      e.target.value = null;
+    },
+
+    onDragOver() {
+      this.fileDropOver = true;
+    },
+
+    onDragLeave() {
+      this.fileDropOver = false;
+    },
+
+    onDrop(e) {
+      this.fileDropOver = false;
+      const dt = e.dataTransfer;
+      if (!dt) return;
+      const files = Array.from(dt.files || []);
+      if (files.length) {
+        this.docFiles.push(...files);
+      }
+    },
+
+    async send(docx_create = false) {
       this.error = null;
       const q = (this.question || '').trim();
       if (!q) {
@@ -160,15 +250,24 @@ export default {
         // create a new AbortController for this request so we can cancel it if a new send happens
         const controller = new AbortController();
         this.currentAbortController = controller;
+        // build payload including new options
+        const payload = {
+          question: q,
+          stream: true,
+          docx_create: !!docx_create,
+          file_num: this.file_num || null,
+          style: this.style || '',
+          first_page_toc: !!this.first_page_toc,
+          files: this.docFiles.map(f => ({ name: f.name, size: f.size, type: f.type })),
+          menu: this.menu || '',
+          outline: this.outline || '',
+          example: this.example || ''
+        };
+
         const res = await fetch('/api/ask', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(
-              {
-                question: q,
-                stream: true
-              }
-          ),
+          body: JSON.stringify(payload),
           signal: controller.signal
         });
 
@@ -637,7 +736,6 @@ body {
 .input-bar input { flex: 1; height: 56px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.06); background: var(--input-bg); color: var(--text); font-size: 16px; }
 .input-bar input::placeholder { color: var(--muted); }
 .input-bar button { width: 120px; height: 56px; border-radius: 12px; border: none; background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #081217; font-weight: 700; font-size: 16px; box-shadow: 0 8px 20px rgba(184,134,11,0.12); cursor: pointer; }
-.input-bar .right-buttons { margin-left: auto; display: flex; gap: 12px; }
 
 .theme-toggle { margin-left: 10px; background: transparent; border: 1px solid var(--sidebar-border); color: var(--accent); padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 16px; }
 .app-shell.light .theme-toggle { color: var(--accent); border-color: rgba(43,124,255,0.12); }
@@ -651,4 +749,23 @@ body {
 html.theme-fading {
   transition: background 180ms ease-in-out, color 180ms ease-in-out;
 }
+
+/* compose-area and expanded panel styles */
+.compose-area { display:flex; flex-direction:column; gap:8px; padding: 12px 20px; }
+.expand-btn { width:44px; height:44px; border-radius:8px; border:1px solid var(--sidebar-border); background:transparent; color:var(--accent); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; }
+.expand-panel { border:1px solid rgba(0,0,0,0.04); padding:12px; border-radius:10px; background:var(--sidebar-bg); display:flex; flex-direction:column; gap:12px; }
+.top-fields { display:flex; gap:12px; flex-direction:column; }
+.top-fields .field { display:flex; flex-direction:column; gap:6px; }
+.top-fields input, .top-fields textarea { width:100%; padding:8px; border-radius:8px; border:1px solid rgba(0,0,0,0.06); background:var(--input-bg); color:var(--text); }
+.two-cols { display:flex; gap:12px; }
+.left-col { flex:1; display:flex; flex-direction:column; gap:8px; }
+.right-col { flex:2; }
+.dropzone { border:2px dashed rgba(0,0,0,0.12); border-radius:10px; padding:18px; height:140px; display:flex; align-items:center; justify-content:center; cursor:pointer; background:transparent; }
+.dropzone-inner { text-align:center; color:var(--muted); }
+.added-list { color:var(--text); margin-top:8px; font-size:13px; }
+.checkbox-row { display:flex; align-items:center; gap:8px; }
+.main-input { flex:1; height:56px; padding:12px 14px; border-radius:12px; border:1px solid rgba(0,0,0,0.06); background:var(--input-bg); color:var(--text); font-size:16px; }
+.btn-send, .btn-gen { width:120px; height:56px; border-radius:12px; border:none; background:linear-gradient(90deg,var(--accent),var(--accent-2)); color:#081217; font-weight:700; font-size:16px; cursor:pointer; }
+.input-bar { height:84px; display:flex; gap:12px; padding:0; align-items:center; border-top:1px solid rgba(0,0,0,0.04); background:var(--sidebar-bg); }
+.compose-area .input-bar { padding:12px 0 0 0; }
 </style>

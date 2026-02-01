@@ -513,17 +513,184 @@ export default {
       }
 
       return segments;
-    }
-  },
-  watch: {
-    // watch currentConversationId and persist to localStorage
-    currentConversationId(newCid) {
+    },
+
+    // Download the generated result as a .docx file.
+    async downloadResult() {
+      if (!this.finalResult) {
+        this.error = '没有可下载的结果';
+        return;
+      }
+
+      const prevLoading = this.isLoading;
+      this.isLoading = true;
+      this.error = null;
+
       try {
-        localStorage.setItem('conversation_id', newCid);
-      } catch (e) {}
+        // If finalResult is a wrapper like { result: {...}, conversation_id: ... }, prefer inner result
+        const docObj = (this.finalResult && this.finalResult.result) ? this.finalResult.result : this.finalResult;
+
+        // If backend returned a direct URL we can download, prefer it (check wrapper and inner)
+        const direct = (this.finalResult && (this.finalResult.download_url || this.finalResult.url || this.finalResult.file_path)) || (docObj && (docObj.download_url || docObj.url || docObj.file_path)) || null;
+        if (direct && typeof direct === 'string') {
+          const fetchUrl = direct.startsWith('http') ? direct : direct.startsWith('/') ? direct : `/api/docx?path=${encodeURIComponent(direct)}`;
+
+          const res = await fetch(fetchUrl, { method: 'GET' });
+          if (!res.ok) {
+            const txt = await res.text();
+            throw new Error('下载失败: ' + txt);
+          }
+
+          const ct = (res.headers.get('content-type') || '').toLowerCase();
+          if (ct.includes('application/json')) {
+            const j = await res.json();
+            throw new Error(j.error || j.message || '服务器返回 JSON 而非文件');
+          }
+
+          const blob = await res.blob();
+          const disposition = res.headers.get('content-disposition') || '';
+          let filename = (docObj && (docObj.filename || docObj.name)) || (this.finalResult && (this.finalResult.filename || this.finalResult.name)) || 'result.docx';
+          const m = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(disposition);
+          if (m) filename = decodeURIComponent(m[1] || m[2]);
+
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          return;
+        }
+
+        // Fallback: POST the structured document (docObj) to backend /api/docx which will create and return the docx
+        const res = await fetch('/api/docx', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(docObj)
+        });
+
+        if (!res.ok) {
+          const ct = (res.headers.get('content-type') || '').toLowerCase();
+          if (ct.includes('application/json')) {
+            const j = await res.json();
+            throw new Error(j.error || j.message || '生成文档失败');
+          }
+          const txt = await res.text();
+          throw new Error('生成文档失败: ' + txt);
+        }
+
+        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+        if (contentType.includes('application/json')) {
+          const j = await res.json();
+          if (j.error) throw new Error(j.error);
+          const maybeUrl = j.download_url || j.file_path || j.url || null;
+          if (maybeUrl) {
+            const r2 = await fetch(maybeUrl.startsWith('http') ? maybeUrl : maybeUrl.startsWith('/') ? maybeUrl : `/api/docx?path=${encodeURIComponent(maybeUrl)}`);
+            if (!r2.ok) throw new Error('下载中转失败');
+            const blob2 = await r2.blob();
+            const disposition2 = r2.headers.get('content-disposition') || '';
+            let filename2 = j.filename || (docObj && (docObj.filename || docObj.name)) || 'result.docx';
+            const m2 = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(disposition2);
+            if (m2) filename2 = decodeURIComponent(m2[1] || m2[2]);
+            const url2 = URL.createObjectURL(blob2);
+            const a2 = document.createElement('a');
+            a2.href = url2;
+            a2.download = filename2;
+            document.body.appendChild(a2);
+            a2.click();
+            document.body.removeChild(a2);
+            URL.revokeObjectURL(url2);
+            return;
+          }
+
+          throw new Error('后端未返回文件');
+        }
+
+        const blob = await res.blob();
+        const disposition = res.headers.get('content-disposition') || '';
+        let filename = (docObj && (docObj.filename || docObj.name)) || (this.finalResult && (this.finalResult.filename || this.finalResult.name)) || 'result.docx';
+        const m3 = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(disposition);
+        if (m3) filename = decodeURIComponent(m3[1] || m3[2]);
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error('downloadResult error', err);
+        this.error = err && err.message ? err.message : String(err);
+      } finally {
+        this.isLoading = prevLoading;
+      }
+    },
+
+    // Delete an uploaded file from UI and, if uploaded, request backend to remove it
+    async deleteFile(idx) {
+      if (idx == null || idx < 0 || idx >= this.docFiles.length) return;
+
+      const file = this.docFiles[idx];
+
+      // If uploading, allow immediate removal from UI
+      if (file.uploading) {
+        // simply remove placeholder
+        this.docFiles.splice(idx, 1);
+        return;
+      }
+
+      // If file has upload_file_id, try to delete on server as well
+      if (file.upload_file_id) {
+        try {
+          // try common endpoint names
+          const endpoints = ['/api/delete', '/api/delete_upload', '/api/delete_file'];
+          let deleted = false;
+          for (const ep of endpoints) {
+            try {
+              const res = await fetch(ep, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ upload_file_id: file.upload_file_id, file_path: file.file_path })
+              });
+              if (res.ok) {
+                deleted = true;
+                break;
+              }
+            } catch (e) {
+              // ignore and try next
+            }
+          }
+          // remove from UI regardless of backend success, but log if failed
+          this.docFiles.splice(idx, 1);
+          if (!deleted) console.warn('Server-side file delete may have failed for', file.upload_file_id);
+          return;
+        } catch (err) {
+          console.error('deleteFile error', err);
+          // still remove from UI to avoid blocking user
+          this.docFiles.splice(idx, 1);
+          this.error = '删除文件时出现错误（已从列表移除）';
+          return;
+        }
+      }
+
+      // otherwise just remove from UI
+      this.docFiles.splice(idx, 1);
     }
-  }
-};
+
+    },
+    watch: {
+      // watch currentConversationId and persist to localStorage
+      currentConversationId(newCid) {
+        try {
+          localStorage.setItem('conversation_id', newCid);
+        } catch (e) {}
+      }
+    }
+  };
 </script>
 
 <style>
@@ -826,7 +993,7 @@ html.dark ::-webkit-scrollbar { background: transparent; width: 10px; }
   cursor: pointer;
 }
 .dropzone {
-  flex: 1;                    /* 关键：占满 right-col 的所有剩余高度 */
+  flex: 1;                    /* 关键：占满 right-col 的所有剩��高度 */
   display: flex;              /* 内部内容居中 */
   flex-direction: column;
   justify-content: center;    /* 垂直居中 */

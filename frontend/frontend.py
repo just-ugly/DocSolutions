@@ -1,17 +1,18 @@
 from flask import Flask, request, jsonify, send_from_directory, Response, send_file
 import os
 import sys
-import json
 
 # ensure backend folder is on sys.path so runtime imports like `from dify import ...` work
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backend')))
 
 app = Flask(__name__, static_folder='dist')
 
+
 @app.route("/", methods=["GET"])
 def index():
     """Serve the Vue application"""
     return send_from_directory(app.static_folder, 'index.html')
+
 
 @app.route("/generate", methods=["POST"])
 def generate_document():
@@ -75,13 +76,19 @@ def api_ask():
                     try:
                         import importlib
                         mod = importlib.import_module('dify')
-                        gen = getattr(mod, 'dify_request_stream_generator')
+                        # prefer the new chatflow stream generator that supports conversation_id and user
+                        gen = getattr(mod, 'dify_chatflow_stream_generator')
                     except Exception as e:
                         # yield a plain text error line so frontend can show it
                         yield 'ERROR: 后端模块未找到\n'
                         return
 
-                    for chunk in gen(question):
+                    # prepare parameters from incoming request (optional fields)
+                    user = data.get('user', 'human-user')
+                    conversation_id = data.get('conversation_id', '') or ''
+                    docx_create = bool(data.get('docx_create', False))
+                    # call the chatflow stream generator with the parameters
+                    for chunk in gen(question, user=user, conversation_id=conversation_id, docx_create=docx_create):
                         # Ensure chunk is str
                         if isinstance(chunk, bytes):
                             chunk = chunk.decode('utf-8', errors='ignore')
@@ -143,5 +150,6 @@ if __name__ == "__main__":
             return send_from_directory(app.static_folder, path)
         # If file not found, return 404 so client-side routing or API routes can handle it
         return jsonify({'error': '静态资源未找到'}), 404
+
 
     app.run(debug=True, host="0.0.0.0", port=5000)

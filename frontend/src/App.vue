@@ -1,9 +1,17 @@
 <template>
-  <div id="app" class="app-shell">
+  <div id="app" class="app-shell" :class="theme">
     <aside class="sidebar">
       <div class="user">
         <div class="avatar">U</div>
         <div class="username">用户</div>
+        <button class="theme-toggle" @click="toggleTheme" :title="theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'">
+          <svg v-if="theme === 'dark'" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" fill="currentColor" />
+          </svg>
+          <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M6.76 4.84l-1.8-1.79L3.17 4.84l1.79 1.79 1.8-1.79zM1 13h3v-2H1v2zm10 9h2v-3h-2v3zm9-9v-2h-3v2h3zM17.24 4.84l1.79-1.79 1.79 1.79-1.79 1.79-1.79-1.79zM12 6a6 6 0 100 12 6 6 0 000-12z" fill="currentColor" />
+          </svg>
+        </button>
       </div>
       <div class="history">
         <h3>历史对话</h3>
@@ -53,7 +61,8 @@
 
       <div class="input-bar">
         <input v-model="question" @keyup.enter="send" :disabled="isLoading" placeholder="输入你的问题，按回车发送" />
-        <button @click="send" :disabled="isLoading || !question.trim()">发送</button>
+        <button :disabled="isLoading || !question.trim()">发送</button>
+        <button @click="send" :disabled="isLoading || !question.trim()">生成</button>
       </div>
     </main>
   </div>
@@ -71,10 +80,44 @@ export default {
       isLoading: false,
       error: null,
       finalResult: null,
-      currentAbortController: null
+      currentAbortController: null,
+      // theme: 'dark' or 'light'
+      theme: 'dark'
     };
   },
+  created() {
+    // Load theme from localStorage if available and apply class to documentElement so variables affect body
+    try {
+      const t = localStorage.getItem('theme');
+      if (t === 'light' || t === 'dark') this.theme = t;
+    } catch (e) {}
+    try {
+      document.documentElement.classList.remove('light', 'dark');
+      document.documentElement.classList.add(this.theme);
+    } catch (e) {}
+  },
   methods: {
+    toggleTheme() {
+      // fade out -> change theme -> fade in to ensure smooth transition both directions
+      try {
+        document.documentElement.classList.add('theme-fading');
+      } catch (e) {}
+
+      // short delay to allow fade-out, then switch theme and remove fading class
+      setTimeout(() => {
+        this.theme = this.theme === 'dark' ? 'light' : 'dark';
+        try {
+          localStorage.setItem('theme', this.theme);
+          document.documentElement.classList.remove('light', 'dark');
+          document.documentElement.classList.add(this.theme);
+        } catch (e) {}
+
+        // allow a tiny timeout for the new theme to render, then fade in
+        setTimeout(() => {
+          try { document.documentElement.classList.remove('theme-fading'); } catch (e) {}
+        }, 40);
+      }, 180);
+    },
     hasBotContent() {
       // check if there is any bot message with non-empty content
       return this.messages.some(m => m.sender === 'bot' && (m.content || '').trim().length > 0);
@@ -118,7 +161,12 @@ export default {
         const res = await fetch('/api/ask', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: q, stream: true }),
+          body: JSON.stringify(
+              {
+                question: q,
+                stream: true
+              }
+          ),
           signal: controller.signal
         });
 
@@ -387,18 +435,137 @@ export default {
 </script>
 
 <style>
-:root {
+/* Also expose theme variables on the html element so body and other ancestors can read them
+   (we add both html.dark/html.light in addition to .app-shell.* so toggling the html class works) */
+.app-shell.dark {
+  --sidebar-width: 260px;
+  --bg: linear-gradient(180deg, #071017 0%, #0b1418 100%);
+  --accent: #b8860b; /* black-gold */
+  --muted: #9aa6ad;
+  --glass: rgba(255,255,255,0.04);
+  --text: #d9e6eb;
+  --sidebar-bg: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  --sidebar-border: rgba(255,255,255,0.03);
+  --bot-bg: rgba(255,255,255,0.03);
+  --bot-text: #dbe9ec;
+  --user-bg: rgba(255,255,255,0.96);
+  --user-text: #0b0f12;
+  --input-bg: rgba(255,255,255,0.02);
+  --code-bg: #071017;
+  --message-shadow: 0 6px 18px rgba(2,6,10,0.35);
+  --accent-2: #ffd27a; /* gold highlight */
+  --avatar-bg: linear-gradient(135deg,#0c0c0c 0%, #2b1f0a 100%);
+  --avatar-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  --avatar-border: 1px solid rgba(255,255,255,0.06);
+}
+.app-shell.light {
   --sidebar-width: 260px;
   --bg: linear-gradient(135deg, #eef2f7 0%, #d7e1ec 100%);
-  --accent: #2b7cff;
+  --accent: #2b7cff; /* blue accent */
+  --muted: #6b7280;
+  --glass: rgba(0,0,0,0.04);
+  --text: #081217; /* dark text */
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #e6ecf2;
+  --bot-bg: #ffffff; /* generated messages white */
+  --bot-text: #0b1720;
+  --user-bg: #eaf4ff; /* subtle blue-ish white for user */
+  --user-text: #062036;
+  --input-bg: #ffffff;
+  --code-bg: #f5f7fb;
+  --message-shadow: 0 4px 12px rgba(11,20,30,0.06);
+  --accent-2: #8ec4ff; /* lighter blue highlight */
+  --avatar-bg: linear-gradient(135deg,#ffffff 0%, #eaf4ff 100%);
+  --avatar-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  --avatar-border: 1px solid rgba(0,0,0,0.06);
+}
+
+/* Mirror vars on the html element so documentElement.classList = 'dark'|'light' controls page colors */
+html.dark {
+  --sidebar-width: 260px;
+  --bg: linear-gradient(180deg, #071017 0%, #0b1418 100%);
+  --accent: #b8860b; /* black-gold */
+  --muted: #9aa6ad;
+  --glass: rgba(255,255,255,0.04);
+  --text: #d9e6eb;
+  --sidebar-bg: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  --sidebar-border: rgba(255,255,255,0.03);
+  --bot-bg: rgba(255,255,255,0.03);
+  --bot-text: #dbe9ec;
+  --user-bg: rgba(255,255,255,0.96);
+  --user-text: #0b0f12;
+  --input-bg: rgba(255,255,255,0.02);
+  --code-bg: #071017;
+  --message-shadow: 0 6px 18px rgba(2,6,10,0.35);
+  --accent-2: #ffd27a;
+  --avatar-bg: linear-gradient(135deg,#0c0c0c 0%, #2b1f0a 100%);
+  --avatar-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  --avatar-border: 1px solid rgba(255,255,255,0.06);
+}
+html.light {
+  --sidebar-width: 260px;
+  --bg: linear-gradient(135deg, #eef2f7 0%, #d7e1ec 100%);
+  --accent: #2b7cff; /* blue accent */
+  --muted: #6b7280;
+  --glass: rgba(0,0,0,0.04);
+  --text: #081217; /* dark text */
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #e6ecf2;
+  --bot-bg: #ffffff; /* generated messages white */
+  --bot-text: #0b1720;
+  --user-bg: #eaf4ff; /* subtle blue-ish white for user */
+  --user-text: #062036;
+  --input-bg: #ffffff;
+  --code-bg: #f5f7fb;
+  --message-shadow: 0 4px 12px rgba(11,20,30,0.06);
+  --accent-2: #8ec4ff;
+  --avatar-bg: linear-gradient(135deg,#ffffff 0%, #eaf4ff 100%);
+  --avatar-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  --avatar-border: 1px solid rgba(0,0,0,0.06);
+}
+
+/* Smooth transition for html background and color when toggling theme */
+html {
+  transition: background 260ms ease-in-out, color 260ms ease-in-out;
+}
+
+:root {
+  --sidebar-width: 260px;
+  --bg: linear-gradient(180deg, #071017 0%, #0b1418 100%);
+  --accent: #b8860b; /* fallback */
+  --muted: #9aa6ad;
+  --glass: rgba(255,255,255,0.04);
+  --text: #d9e6eb;
+  --sidebar-bg: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  --sidebar-border: rgba(255,255,255,0.03);
+  --bot-bg: rgba(255,255,255,0.03);
+  --bot-text: #dbe9ec;
+  --user-bg: rgba(255,255,255,0.96);
+  --user-text: #0b0f12;
+  --input-bg: rgba(255,255,255,0.02);
+  --code-bg: #071017;
+  --message-shadow: 0 6px 18px rgba(2,6,10,0.35);
 }
 
 * { box-sizing: border-box; }
 html, body, #app { height: 100%; }
 body {
   margin: 0;
-  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-family: 'Inter', 'Segoe UI', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
   background: var(--bg);
+  color: var(--text);
+}
+
+/* smooth transitions for theme-related properties */
+.app-shell,
+.sidebar,
+.message,
+.input-bar,
+.input-bar input,
+.avatar,
+.theme-toggle,
+.json-block {
+  transition: background-color 260ms ease, color 260ms ease, border-color 260ms ease, box-shadow 260ms ease;
 }
 
 .app-shell {
@@ -406,50 +573,79 @@ body {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
+  background: var(--bg);
 }
 
 .sidebar {
   width: var(--sidebar-width);
-  background: white;
-  border-right: 1px solid #e6ecf2;
-  padding: 20px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
+  padding: 22px;
   display: flex;
   flex-direction: column;
+  color: var(--text);
 }
 
 .user { display: flex; align-items: center; margin-bottom: 20px; }
 .avatar {
-  width: 56px; height: 56px; border-radius: 50%; background: var(--accent); color: white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px; margin-right:12px;
+  width: 56px; height: 56px; border-radius: 50%;
+  background: var(--avatar-bg);
+  color: #ffdf8f; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px; margin-right:12px;
+  box-shadow: var(--avatar-shadow), var(--message-shadow), inset 0 -2px 6px rgba(0,0,0,0.12);
+  border: var(--avatar-border);
 }
-.username { font-weight: 600; }
+.username { font-weight: 600; color: var(--text); }
 .history { flex: 1; overflow: auto; }
-.history h3 { margin-bottom: 8px; }
-.placeholder { color: #9aa6b2; }
+.history h3 { margin-bottom: 8px; color: var(--muted); }
+.placeholder { color: var(--muted); }
 
-.main-area {
-  flex: 1; display: flex; flex-direction: column; justify-content: space-between;
-}
+.main-area { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
 
 .content { padding: 24px; height: calc(100vh - 80px); overflow: auto; }
-.messages { max-width: 900px; margin: 0 auto; display:flex; flex-direction:column; }
-.message { padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); max-width: 75%; font-size: 16px; }
-.message.system { background: transparent; box-shadow: none; color: #6b7280; max-width: 100%; }
-.message.bot { background: white; color: #111; align-self: flex-start; }
-.message.user { background: var(--accent); color: white; align-self: flex-end; }
-.message.error { border-left: 4px solid #e74c3c; color: #e74c3c; align-self: flex-start; }
-.message.loading { color: #2b7cff; align-self: flex-start; }
-.chunk-text { margin: 0; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; font-size: 16px; white-space: pre-wrap; word-break: break-word; }
-.think { background: #f3f6f9; color: #374151; padding: 8px 10px; border-left: 3px solid #2b7cff; border-radius: 6px; margin-bottom: 8px; font-style: normal; }
-.json-block { background: #0b1220; color: #d8eef8; padding: 12px; border-radius: 6px; overflow:auto; font-family: 'Courier New', monospace; font-size: 14px; white-space: pre-wrap; word-break: break-word; max-height: 420px; }
+.messages { max-width: 900px; margin: 0 auto; display:flex; flex-direction:column; gap: 10px; }
+
+/* message bubbles */
+.message { padding: 14px 18px; border-radius: 12px; margin-bottom: 8px; box-shadow: var(--message-shadow); max-width: 78%; font-size: 17px; backdrop-filter: blur(6px); }
+.message.system { background: transparent; box-shadow: none; color: var(--muted); max-width: 100%; }
+
+/* Bot (generated) messages: use vars */
+.message.bot { background: var(--bot-bg); color: var(--bot-text); align-self: flex-start; border: 1px solid rgba(0,0,0,0.04); }
+
+/* User messages: refined */
+.message.user { background: var(--user-bg); color: var(--user-text); align-self: flex-end; border: 1px solid rgba(0,0,0,0.04); box-shadow: 0 8px 24px rgba(11,15,18,0.06); }
+
+.message.error { border-left: 4px solid #e74c3c; color: #ffb4b0; align-self: flex-start; }
+.message.loading { color: #b1d6ff; align-self: flex-start; }
+
+.chunk-text { margin: 0; font-family: 'Segoe UI', 'Microsoft YaHei', 'Inter', system-ui, -apple-system, sans-serif; font-size: 17px; white-space: pre-wrap; word-break: break-word; color: inherit; }
+
+/* think block: subtle panel with accent */
+.think { background: rgba(255,255,255,0.03); color: var(--bot-text); padding: 10px 12px; border-left: 3px solid var(--accent); border-radius: 8px; margin-bottom: 8px; font-style: normal; }
+
+/* JSON code block */
+.json-block { background: var(--code-bg); color: var(--bot-text); padding: 14px; border-radius: 8px; overflow:auto; font-family: 'Courier New', monospace; font-size: 14px; white-space: pre-wrap; word-break: break-word; max-height: 420px; border: 1px solid rgba(0,0,0,0.04); }
+
+/* download action pinned to bot left edge */
 .result-actions { display:flex; justify-content: flex-start; }
 .action-row { background: transparent; box-shadow: none; padding: 0; margin-bottom: 12px; align-self: flex-start; }
-.download-btn { padding: 8px 14px; border-radius: 6px; background: #2ecc71; color: white; border: none; cursor: pointer; }
+.download-btn { padding: 8px 14px; border-radius: 8px; background: linear-gradient(90deg, #2ecc71 0%, #27ae60 100%); color: white; border: none; cursor: pointer; box-shadow: 0 6px 18px rgba(39,174,96,0.14); }
 
-.input-bar { height: 80px; display:flex; gap: 12px; padding: 12px 20px; align-items: center; border-top: 1px solid #e6ecf2; background: white; }
-.input-bar input { flex: 1; height: 52px; padding: 12px 14px; border-radius: 8px; border: 1px solid #d1d9e0; font-size: 16px; }
-.input-bar button { width: 120px; height: 52px; border-radius: 8px; border: none; background: var(--accent); color: white; font-weight: 600; font-size: 16px; }
+/* input bar */
+.input-bar { height: 84px; display:flex; gap: 12px; padding: 12px 20px; align-items: center; border-top: 1px solid rgba(0,0,0,0.04); background: var(--sidebar-bg); }
+.input-bar input { flex: 1; height: 56px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.06); background: var(--input-bg); color: var(--text); font-size: 16px; }
+.input-bar input::placeholder { color: var(--muted); }
+.input-bar button { width: 120px; height: 56px; border-radius: 12px; border: none; background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #081217; font-weight: 700; font-size: 16px; box-shadow: 0 8px 20px rgba(184,134,11,0.12); cursor: pointer; }
 
-@media (max-width: 800px) {
-  .sidebar { display: none; }
+.theme-toggle { margin-left: 10px; background: transparent; border: 1px solid var(--sidebar-border); color: var(--accent); padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 16px; }
+.app-shell.light .theme-toggle { color: var(--accent); border-color: rgba(43,124,255,0.12); }
+
+/* placeholder color should adapt to theme */
+.input-bar input::placeholder { color: var(--muted); }
+
+@media (max-width: 800px) { .sidebar { display: none; } }
+
+/* fade-out/fade-in transition for theme toggling */
+html.theme-fading {
+  transition: background 180ms ease-in-out, color 180ms ease-in-out;
 }
 </style>

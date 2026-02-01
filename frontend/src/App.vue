@@ -68,16 +68,16 @@
 
         <div class="expand-panel" v-if="panelExpanded">
           <div class="top-fields">
-            <div class="field"><label>问题输出 (Query)</label><input class="main-input" v-model="question" :disabled="isLoading" /></div>
-            <div class="field"><label>目录 (Menu)</label><input v-model="menu" /></div>
-            <div class="field"><label>提纲 (Outline)</label><textarea v-model="outline"></textarea></div>
-            <div class="field"><label>示例 (Example)</label><textarea v-model="example"></textarea></div>
+            <div class="field"><label>问题</label><input class="main-input" v-model="question" :disabled="isLoading" /></div>
+            <div class="field"><label>目录</label><textarea class="menu-textarea" v-model="menu" rows="2"></textarea></div>
+            <div class="field"><label>提纲</label><textarea v-model="outline"></textarea></div>
+            <div class="field"><label>示例</label><textarea v-model="example"></textarea></div>
           </div>
 
           <div class="two-cols">
             <div class="left-col">
               <label>预期文档字数</label>
-              <input type="number" v-model.number="file_num" min="1" placeholder="仅数字" />
+              <input type="number" v-model.number="file_num" min="1" />
 
               <label>预期文档文风</label>
               <select v-model="style">
@@ -105,7 +105,7 @@
         </div>
 
         <div class="input-bar">
-          <input class="main-input" v-model="question" @keyup.enter="send(false)" :disabled="isLoading" placeholder="输入你的问题，按回车发送" />
+          <input class="main-input" v-model="question" @keyup.enter="send(false)" :disabled="isLoading" />
           <button class="btn-send" @click="send(false)" :disabled="isLoading || !question.trim()">发送</button>
           <button class="btn-gen" @click="send(true)" :disabled="isLoading || !question.trim()">生成</button>
         </div>
@@ -120,9 +120,7 @@ export default {
   data() {
     return {
       question: '',
-      messages: [
-        { sender: 'system', content: '请输入一个问题，按回车或点击发送开始。' }
-      ],
+      messages: [],
       isLoading: false,
       error: null,
       finalResult: null,
@@ -134,7 +132,7 @@ export default {
       menu: '',
       outline: '',
       example: '',
-      file_num: null,
+      file_num: 1000,
       style: '',
       first_page_toc: false,
       docFiles: [],
@@ -543,21 +541,27 @@ export default {
   --bg: linear-gradient(180deg, #071017 0%, #0b1418 100%);
   --accent: #b8860b; /* black-gold */
   --muted: #9aa6ad;
-  --glass: rgba(255,255,255,0.04);
+  --glass: rgba(255,255,255,0.03);
   --text: #d9e6eb;
-  --sidebar-bg: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-  --sidebar-border: rgba(255,255,255,0.03);
-  --bot-bg: rgba(255,255,255,0.03);
+  --sidebar-bg: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));
+  --sidebar-border: rgba(255,255,255,0.02);
+  --bot-bg: rgba(255,255,255,0.02);
   --bot-text: #dbe9ec;
   --user-bg: rgba(255,255,255,0.96);
   --user-text: #0b0f12;
-  --input-bg: rgba(255,255,255,0.02);
+  /* Centralized control colors for dark theme — tuned for visibility without glare */
+  --input-bg: rgba(0,0,0,0.45);      /* slightly dark surface for inputs */
+  --control-bg: rgba(0,0,0,0.45);
+  --control-border: rgba(255,255,255,0.04);
+  --dropzone-border: rgba(255,255,255,0.22); /* stronger to be clearly visible */
+  --dropzone-bg: rgba(255,255,255,0.02);
+  --scroll-thumb: rgba(255,255,255,0.025);   /* darker but subtle */
   --code-bg: #071017;
   --message-shadow: 0 6px 18px rgba(2,6,10,0.35);
   --accent-2: #ffd27a; /* gold highlight */
   --avatar-bg: linear-gradient(135deg,#0c0c0c 0%, #2b1f0a 100%);
   --avatar-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  --avatar-border: 1px solid rgba(255,255,255,0.06);
+  --avatar-border: 1px solid rgba(255,255,255,0.04);
 }
 .app-shell.light {
   --sidebar-width: 260px;
@@ -587,21 +591,21 @@ html.dark {
   --bg: linear-gradient(180deg, #071017 0%, #0b1418 100%);
   --accent: #b8860b; /* black-gold */
   --muted: #9aa6ad;
-  --glass: rgba(255,255,255,0.04);
+  --glass: rgba(255,255,255,0.03);
   --text: #d9e6eb;
-  --sidebar-bg: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-  --sidebar-border: rgba(255,255,255,0.03);
-  --bot-bg: rgba(255,255,255,0.03);
+  --sidebar-bg: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));
+  --sidebar-border: rgba(255,255,255,0.02);
+  --bot-bg: rgba(255,255,255,0.02);
   --bot-text: #dbe9ec;
   --user-bg: rgba(255,255,255,0.96);
   --user-text: #0b0f12;
-  --input-bg: rgba(255,255,255,0.02);
-  --code-bg: #071017;
-  --message-shadow: 0 6px 18px rgba(2,6,10,0.35);
-  --accent-2: #ffd27a;
-  --avatar-bg: linear-gradient(135deg,#0c0c0c 0%, #2b1f0a 100%);
-  --avatar-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  --avatar-border: 1px solid rgba(255,255,255,0.06);
+  /* same control variables mirrored for html.dark */
+  --input-bg: rgba(0,0,0,0.45);
+  --control-bg: rgba(0,0,0,0.45);
+  --control-border: rgba(255,255,255,0.04);
+  --dropzone-border: rgba(255,255,255,0.22);
+  --dropzone-bg: rgba(255,255,255,0.02);
+  --scroll-thumb: rgba(255,255,255,0.025);
 }
 html.light {
   --sidebar-width: 260px;
@@ -732,40 +736,122 @@ body {
 .download-btn { padding: 8px 14px; border-radius: 8px; background: linear-gradient(90deg, #2ecc71 0%, #27ae60 100%); color: white; border: none; cursor: pointer; box-shadow: 0 6px 18px rgba(39,174,96,0.14); }
 
 /* input bar */
-.input-bar { height: 84px; display:flex; gap: 12px; padding: 12px 20px; align-items: center; border-top: 1px solid rgba(0,0,0,0.04); background: var(--sidebar-bg); }
-.input-bar input { flex: 1; height: 56px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.06); background: var(--input-bg); color: var(--text); font-size: 16px; }
+.input-bar { height: 84px; display:flex; gap: 12px; padding: 14px 20px; align-items: center; border-top: 1px solid rgba(0,0,0,0.04); background: var(--sidebar-bg); border-radius: 14px; }
+.input-bar input { flex: 1; height: 56px; padding: 14px 16px; border-radius: 14px; border: 1px solid rgba(0,0,0,0.06); background: var(--input-bg); color: var(--text); font-size: 16px; }
 .input-bar input::placeholder { color: var(--muted); }
-.input-bar button { width: 120px; height: 56px; border-radius: 12px; border: none; background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #081217; font-weight: 700; font-size: 16px; box-shadow: 0 8px 20px rgba(184,134,11,0.12); cursor: pointer; }
+.input-bar button { width: 120px; height: 56px; border-radius: 14px; border: none; background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #081217; font-weight: 700; font-size: 16px; box-shadow: 0 8px 20px rgba(184,134,11,0.12); cursor: pointer; }
 
-.theme-toggle { margin-left: 10px; background: transparent; border: 1px solid var(--sidebar-border); color: var(--accent); padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 16px; }
-.app-shell.light .theme-toggle { color: var(--accent); border-color: rgba(43,124,255,0.12); }
+.input-help { color: var(--muted); font-size: 13px; margin: 6px 20px 2px; }
 
-/* placeholder color should adapt to theme */
-.input-bar input::placeholder { color: var(--muted); }
+/* Ensure menu/outline/example textareas only resize vertically */
+.top-fields input, .top-fields textarea { width:100%; padding:8px; border-radius:8px; border:1px solid rgba(0,0,0,0.06); background:var(--input-bg); color:var(--text); }
+.top-fields textarea { resize: vertical; }
+.menu-textarea { resize: vertical; min-height:42px; max-height:200px; }
 
-@media (max-width: 800px) { .sidebar { display: none; } }
-
-/* fade-out/fade-in transition for theme toggling */
-html.theme-fading {
-  transition: background 180ms ease-in-out, color 180ms ease-in-out;
+/* Dark-theme tweaks: reuse centralized variables so we can tweak brightness easily */
+.app-shell.dark .dropzone {
+  border: 2px dashed var(--dropzone-border);
+  background: var(--dropzone-bg);
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
 }
+.app-shell.dark .dropzone-inner { color: var(--muted); }
+.app-shell.dark .left-col input,
+.app-shell.dark .left-col select,
+.app-shell.dark .top-fields input,
+.app-shell.dark .top-fields textarea {
+  background: var(--control-bg);
+  border: 1px solid var(--control-border);
+  color: var(--text);
+}
+.app-shell.dark .left-col select { color: var(--text); background-image: none; }
+
+/* Tone down number input spin buttons on dark theme (subtle) */
+.app-shell.dark input[type="number"]::-webkit-inner-spin-button,
+.app-shell.dark input[type="number"]::-webkit-outer-spin-button {
+  opacity: 0.25;
+  background: transparent;
+}
+
+/* Scrollbar styling for WebKit - slightly more visible but not glaring */
+html.dark ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 8px; }
+html.dark ::-webkit-scrollbar { background: transparent; width: 10px; }
 
 /* compose-area and expanded panel styles */
 .compose-area { display:flex; flex-direction:column; gap:8px; padding: 12px 20px; }
 .expand-btn { width:44px; height:44px; border-radius:8px; border:1px solid var(--sidebar-border); background:transparent; color:var(--accent); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; }
+.theme-toggle { margin-left: 10px; background: transparent; border: 1px solid var(--sidebar-border); color: var(--accent); padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 16px; }
+.theme-toggle:hover { background: rgba(255,255,255,0.02); }
+.app-shell.light .theme-toggle { color: var(--accent); border-color: rgba(43,124,255,0.12); }
+.app-shell.dark .theme-toggle { color: var(--accent); border-color: rgba(255,255,255,0.06); }
 .expand-panel { border:1px solid rgba(0,0,0,0.04); padding:12px; border-radius:10px; background:var(--sidebar-bg); display:flex; flex-direction:column; gap:12px; }
 .top-fields { display:flex; gap:12px; flex-direction:column; }
 .top-fields .field { display:flex; flex-direction:column; gap:6px; }
-.top-fields input, .top-fields textarea { width:100%; padding:8px; border-radius:8px; border:1px solid rgba(0,0,0,0.06); background:var(--input-bg); color:var(--text); }
-.two-cols { display:flex; gap:12px; }
-.left-col { flex:1; display:flex; flex-direction:column; gap:8px; }
-.right-col { flex:2; }
-.dropzone { border:2px dashed rgba(0,0,0,0.12); border-radius:10px; padding:18px; height:140px; display:flex; align-items:center; justify-content:center; cursor:pointer; background:transparent; }
-.dropzone-inner { text-align:center; color:var(--muted); }
-.added-list { color:var(--text); margin-top:8px; font-size:13px; }
-.checkbox-row { display:flex; align-items:center; gap:8px; }
-.main-input { flex:1; height:56px; padding:12px 14px; border-radius:12px; border:1px solid rgba(0,0,0,0.06); background:var(--input-bg); color:var(--text); font-size:16px; }
-.btn-send, .btn-gen { width:120px; height:56px; border-radius:12px; border:none; background:linear-gradient(90deg,var(--accent),var(--accent-2)); color:#081217; font-weight:700; font-size:16px; cursor:pointer; }
-.input-bar { height:84px; display:flex; gap:12px; padding:0; align-items:center; border-top:1px solid rgba(0,0,0,0.04); background:var(--sidebar-bg); }
-.compose-area .input-bar { padding:12px 0 0 0; }
+
+/* two-cols: left and right columns; left width 1, right width 2 (flex ratio 1:2) */
+.two-cols {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+.two-cols .left-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.two-cols .right-col {
+  flex: 2;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.two-cols .left-col input,
+.two-cols .left-col select {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(0,0,0,0.06);
+  background: var(--input-bg);
+  color: var(--text);
+  width: 100%;
+  height: 42px;
+  box-sizing: border-box;
+  font-size: 15px;
+}
+.checkbox-row input[type="checkbox"] {
+  width: 16px;           /* 标准大小 */
+  height: 16px;
+  margin: 0 6px 0 0;     /* 右边距保留，其他清零 */
+  vertical-align: middle; /* 与文字中线对齐 */
+  cursor: pointer;
+}
+.dropzone {
+  flex: 1;                    /* 关键：占满 right-col 的所有剩余高度 */
+  display: flex;              /* 内部内容居中 */
+  flex-direction: column;
+  justify-content: center;    /* 垂直居中 */
+  align-items: center;        /* 水平居中 */
+  min-height: 0;              /* 防止内容撑开，确保能压缩 */
+  border: 2px dashed var(--dropzone-border, rgba(0,0,0,0.15));
+  border-radius: 10px;
+  background: var(--dropzone-bg, rgba(0,0,0,0.02));
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.dropzone:hover {
+  border-color: var(--accent);
+  background: var(--glass);
+}
+.dropzone-inner {
+  text-align: center;
+  padding: 20px;
+}
+.app-shell.dark .two-cols .left-col input,
+.app-shell.dark .two-cols .left-col select {
+  background: var(--control-bg);
+  border-color: var(--control-border);
+}
+
+@media (max-width: 800px) { .two-cols { flex-direction: column; } }
 </style>

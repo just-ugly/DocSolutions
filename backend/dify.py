@@ -385,8 +385,40 @@ def dify_chatflow_stream_generator(question: str,
     yield "__RESULT__" + json.dumps(final_payload, ensure_ascii=False)
 
 
+def upload_file_to_dify(file_path):
+    """
+    Upload a file to Dify and return the upload_file_id.
+
+    :param file_path: Path to the file to upload.
+    :return: upload_file_id if successful, None otherwise.
+    """
+    url = "https://api.dify.ai/v1/files/upload"
+    headers = {
+        "Authorization": "Bearer YOUR_API_KEY"
+    }
+    files = {
+        "file": open(file_path, "rb")
+    }
+
+    response = requests.post(url, headers=headers, files=files)
+
+    if response.status_code == 200:
+        data = response.json()
+        return data.get("upload_file_id")
+    else:
+        print(f"Failed to upload file to Dify: {response.status_code}, {response.text}")
+        return None
+
+
 # 测试用
 if __name__ == '__main__':
     # 测试dify_chatflow_stream_generator
     for chunk in dify_chatflow_stream_generator("你觉得我应该补充什么内容", "test", docx_create=False, conversation_id="b443421d-33a9-444f-9c8d-06e90f5c7500"):
         print(chunk)
+
+    # 测试文件上传
+    file_id = upload_file_to_dify("path_to_your_file")
+    if file_id:
+        print(f"File uploaded successfully, file_id: {file_id}")
+    else:
+        print("File upload failed")

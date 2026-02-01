@@ -4,9 +4,14 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
-import json
+from flask import Flask, request, jsonify
+import os
 
-from dify import dify_request, dify_chatflow_request
+from dify import dify_request, dify_chatflow_request, upload_file_to_dify
+
+app = Flask(__name__)
+UPLOAD_FOLDER = 'backend/files'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 
 def create_docx(data: dict):
@@ -119,6 +124,27 @@ def create_docx(data: dict):
     # ===== 保存 =====
     doc.save(output_path)
     return output_path
+
+
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part in the request'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    filename = file.filename
+    save_path = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(save_path)
+
+    # Upload to Dify
+    upload_file_id = upload_file_to_dify(save_path)
+    if not upload_file_id:
+        return jsonify({'error': 'Failed to upload file to Dify'}), 500
+
+    return jsonify({'message': 'File uploaded successfully', 'file_path': save_path, 'upload_file_id': upload_file_id}), 200
 
 
 if __name__ == '__main__':

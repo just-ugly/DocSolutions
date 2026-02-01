@@ -61,8 +61,10 @@
 
       <div class="input-bar">
         <input v-model="question" @keyup.enter="send" :disabled="isLoading" placeholder="输入你的问题，按回车发送" />
-        <button :disabled="isLoading || !question.trim()">发送</button>
-        <button @click="send" :disabled="isLoading || !question.trim()">生成</button>
+        <div class="right-buttons">
+          <button :disabled="isLoading || !question.trim()">发送</button>
+          <button @click="send" :disabled="isLoading || !question.trim()">生成</button>
+        </div>
       </div>
     </main>
   </div>
@@ -635,6 +637,7 @@ body {
 .input-bar input { flex: 1; height: 56px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.06); background: var(--input-bg); color: var(--text); font-size: 16px; }
 .input-bar input::placeholder { color: var(--muted); }
 .input-bar button { width: 120px; height: 56px; border-radius: 12px; border: none; background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #081217; font-weight: 700; font-size: 16px; box-shadow: 0 8px 20px rgba(184,134,11,0.12); cursor: pointer; }
+.input-bar .right-buttons { margin-left: auto; display: flex; gap: 12px; }
 
 .theme-toggle { margin-left: 10px; background: transparent; border: 1px solid var(--sidebar-border); color: var(--accent); padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 16px; }
 .app-shell.light .theme-toggle { color: var(--accent); border-color: rgba(43,124,255,0.12); }

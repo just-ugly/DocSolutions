@@ -7,7 +7,7 @@ from docx.oxml import OxmlElement
 from flask import Flask, request, jsonify
 import os
 
-from dify import dify_request, dify_chatflow_request, upload_file_to_dify
+from dify import upload_file_to_dify
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'backend/files'
@@ -146,7 +146,3 @@ def upload_file():
 
     return jsonify({'message': 'File uploaded successfully', 'file_path': save_path, 'upload_file_id': upload_file_id}), 200
 
-
-if __name__ == '__main__':
-    json = dify_request("完整介绍java的继承用法", stream=True)
-    create_docx(json)

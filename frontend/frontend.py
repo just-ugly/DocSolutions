@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, send_from_directory, Response, send_file
+from werkzeug.utils import secure_filename
 import os
 import sys
 
@@ -87,8 +88,9 @@ def api_ask():
                     user = data.get('user', 'human-user')
                     conversation_id = data.get('conversation_id', '') or ''
                     docx_create = bool(data.get('docx_create', False))
-                    # call the chatflow stream generator with the parameters
-                    for chunk in gen(question, user=user, conversation_id=conversation_id, docx_create=docx_create):
+                    files = data.get('files') or []
+                    # call the chatflow stream generator with the parameters, including files if provided
+                    for chunk in gen(question, user=user, conversation_id=conversation_id, docx_create=docx_create, files=files):
                         # Ensure chunk is str
                         if isinstance(chunk, bytes):
                             chunk = chunk.decode('utf-8', errors='ignore')
@@ -137,6 +139,85 @@ def api_docx():
         return send_file(os.path.abspath(file_path), as_attachment=True, download_name=filename)
     except Exception as e:
         print('api_docx error:', e)
+        return jsonify({'error': str(e)}), 500
+
+
+# Endpoint to receive file uploads from frontend, save locally and upload to Dify
+@app.route('/api/upload', methods=['POST'])
+def api_upload():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part in the request'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+
+        original_filename = file.filename
+        # preserve the original filename as much as possible while preventing path traversal
+        basename = os.path.basename(original_filename)
+        # replace path separators and a couple problematic chars with underscores
+        filename = basename.replace(os.path.sep, '_')
+        if os.path.altsep:
+            filename = filename.replace(os.path.altsep, '_')
+        filename = filename.replace(':', '_')
+
+        upload_dir = os.path.join(os.path.dirname(__file__), '..', 'backend', 'files')
+        upload_dir = os.path.abspath(upload_dir)
+        os.makedirs(upload_dir, exist_ok=True)
+        save_path = os.path.join(upload_dir, filename)
+        file.save(save_path)
+
+        user = request.form.get('user', 'human-user')
+
+        # upload to Dify and return id
+        try:
+            from dify import upload_file_to_dify
+        except Exception as e:
+            print('Failed to import dify.upload helper:', e)
+            return jsonify({'error': '后端上传模块未找到'}), 500
+
+        upload_file_id = upload_file_to_dify(save_path, user=user)
+        if not upload_file_id:
+            return jsonify({'error': 'Failed to upload file to Dify'}), 500
+
+        return jsonify({'message': 'File uploaded successfully', 'original_filename': original_filename, 'file_path': save_path, 'upload_file_id': upload_file_id}), 200
+    except Exception as e:
+        print('api_upload error:', e)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/delete_upload', methods=['POST'])
+def api_delete_upload():
+    """Best-effort: delete the saved local file and remove it from Dify if upload_file_id provided."""
+    try:
+        data = request.get_json() or {}
+        upload_file_id = data.get('upload_file_id')
+        file_path = data.get('file_path')
+
+        deleted_local = False
+        deleted_remote = False
+
+        # delete local file if path provided
+        if file_path:
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    deleted_local = True
+            except Exception as e:
+                print('Error deleting local file:', e)
+
+        # attempt to delete on Dify if id provided
+        if upload_file_id:
+            try:
+                from dify import delete_file_on_dify
+                deleted_remote = delete_file_on_dify(upload_file_id)
+            except Exception as e:
+                print('Error calling delete_file_on_dify:', e)
+
+        return jsonify({'deleted_local': deleted_local, 'deleted_remote': deleted_remote}), 200
+    except Exception as e:
+        print('api_delete_upload error:', e)
         return jsonify({'error': str(e)}), 500
 
 

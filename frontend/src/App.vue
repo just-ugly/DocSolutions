@@ -97,7 +97,12 @@
                 <input ref="fileInput" type="file" multiple style="display:none" @change="onFileInputChange" />
                 <div class="dropzone-inner">
                   <p>点击添加文件，或将文件拖动于此</p>
-                  <p v-if="docFiles.length" class="added-list">已添加: <span v-for="(f,i) in docFiles" :key="i">{{ f.name }}<span v-if="i < docFiles.length - 1">, </span></span></p>
+                  <div v-if="docFiles.length" class="added-list">
+                    <div v-for="(f,i) in docFiles" :key="i" class="file-item">
+                      <span class="file-name">{{ f.name }}</span>
+                      <button class="file-delete-btn" @click.stop="deleteFile(i)" :title="f.uploading ? '上传中，稍后可删除' : '删除文件'">✕</button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -136,6 +141,10 @@ export default {
       style: '',
       first_page_toc: false,
       docFiles: [],
+      // store active conversation id after first response so subsequent sends continue the conversation
+      currentConversationId: null,
+      // track promises for in-flight uploads so send() can wait for them
+      uploadPromises: [],
       fileDropOver: false
     };
   },
@@ -144,6 +153,11 @@ export default {
     try {
       const t = localStorage.getItem('theme');
       if (t === 'light' || t === 'dark') this.theme = t;
+    } catch (e) {}
+    // load persisted conversation id if available
+    try {
+      const cid = localStorage.getItem('conversation_id');
+      if (cid) this.currentConversationId = cid;
     } catch (e) {}
     try {
       document.documentElement.classList.remove('light', 'dark');
@@ -188,8 +202,12 @@ export default {
     onFileInputChange(e) {
       const files = Array.from(e.target.files || []);
       if (files.length) {
-        // append, but keep only metadata for now
-        this.docFiles.push(...files);
+        // upload each file immediately and store metadata + upload_file_id
+        for (const f of files) {
+          const p = this.uploadAndAppend(f);
+          // keep track so we can await all uploads before sending
+          this.uploadPromises.push(p);
+        }
       }
       // clear the native input so selecting same file again still fires
       e.target.value = null;
@@ -209,7 +227,56 @@ export default {
       if (!dt) return;
       const files = Array.from(dt.files || []);
       if (files.length) {
-        this.docFiles.push(...files);
+        // upload each file immediately and store metadata + upload_file_id
+        for (const f of files) {
+          const p = this.uploadAndAppend(f);
+          this.uploadPromises.push(p);
+        }
+      }
+    },
+
+    // Upload a single File object to backend /api/upload and append to docFiles
+    async uploadAndAppend(file) {
+      // create a placeholder entry so the UI shows the file immediately
+      const placeholder = { name: file.name, size: file.size, type: file.type, uploading: true, upload_file_id: null, file_path: null };
+      const idx = this.docFiles.length;
+      this.docFiles.push(placeholder);
+
+      try {
+        const form = new FormData();
+        // include original filename
+        form.append('file', file, file.name);
+        // include user id expected by Dify; ensure it matches the user used in /api/ask
+        form.append('user', 'human-user');
+
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: form
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          console.error('Upload failed:', text);
+          this.docFiles[idx].uploading = false;
+          this.docFiles[idx].error = text;
+          return null;
+        }
+
+        const json = await res.json();
+        // response expected to include upload_file_id and file_path
+        const upload_file_id = json.upload_file_id || json.id || null;
+        const file_path = json.file_path || null;
+
+        // update placeholder with upload id and saved path
+        this.docFiles[idx].upload_file_id = upload_file_id;
+        this.docFiles[idx].file_path = file_path;
+         this.docFiles[idx].uploading = false;
+         return upload_file_id;
+      } catch (err) {
+        console.error('Exception while uploading file to backend:', err);
+        this.docFiles[idx].uploading = false;
+        this.docFiles[idx].error = String(err);
+        return null;
       }
     },
 
@@ -248,6 +315,17 @@ export default {
         // create a new AbortController for this request so we can cancel it if a new send happens
         const controller = new AbortController();
         this.currentAbortController = controller;
+        // Wait for any in-flight uploads to finish so we include upload_file_id values
+        if (this.uploadPromises && this.uploadPromises.length) {
+          try {
+            await Promise.allSettled(this.uploadPromises);
+          } catch (e) {
+            // ignore; we'll filter out files without upload_file_id below
+          }
+          // clear tracked promises
+          this.uploadPromises = [];
+        }
+
         // build payload including new options
         const payload = {
           question: q,
@@ -256,11 +334,16 @@ export default {
           file_num: this.file_num || null,
           style: this.style || '',
           first_page_toc: !!this.first_page_toc,
-          files: this.docFiles.map(f => ({ name: f.name, size: f.size, type: f.type })),
-          menu: this.menu || '',
-          outline: this.outline || '',
-          example: this.example || ''
-        };
+          // include user id so backend can forward to Dify and match uploads
+          user: 'human-user',
+          // continue conversation if we have an id
+          conversation_id: this.currentConversationId || undefined,
+          // If upload_file_id is available, send Dify InputFileObject for local_file transfer
+          files: this.docFiles.filter(f => f.upload_file_id).map(f => ({ type: 'document', transfer_method: 'local_file', upload_file_id: f.upload_file_id })),
+           menu: this.menu || '',
+           outline: this.outline || '',
+           example: this.example || ''
+         };
 
         const res = await fetch('/api/ask', {
           method: 'POST',
@@ -300,6 +383,10 @@ export default {
                   const jsonStr = part.slice('__RESULT__'.length);
                   try {
                     this.finalResult = JSON.parse(jsonStr);
+                    // if Dify returned a conversation_id, keep it for following messages
+                    if (this.finalResult && this.finalResult.conversation_id) {
+                      this.currentConversationId = this.finalResult.conversation_id;
+                    }
                   } catch (e) {
                     this.finalResult = { text: jsonStr };
                   }
@@ -396,138 +483,44 @@ export default {
         candidates.sort((a, b) => a.index - b.index);
         const first = candidates[0];
 
-        if (first.index > 0) {
-          segments.push({ type: 'text', content: rest.slice(0, first.index) });
-          rest = rest.slice(first.index);
-        }
-
         if (first.type === 'think') {
-          if (thinkClose !== -1 && thinkClose > thinkOpen) {
-            const inner = rest.substring(7, thinkClose);
-            segments.push({ type: 'think', content: inner.trim() });
-            rest = rest.slice(thinkClose + 8);
-          } else {
-            const inner = rest.substring(7);
-            segments.push({ type: 'think', content: inner.trim() });
-            rest = '';
+          // text before think tag
+          if (first.index > 0) {
+            segments.push({ type: 'text', content: rest.slice(0, first.index) });
           }
+          // think tag itself
+          segments.push({ type: 'think', content: rest.slice(first.index + '<think>'.length, thinkClose !== -1 ? thinkClose : undefined) });
+          // rest after think tag
+          rest = rest.slice(thinkClose !== -1 ? thinkClose + '</think>'.length : first.index);
         } else {
-          const langMatch = rest.match(/^```(\w*)\s*\n?/);
-          let lang = '';
-          let afterFenceIndex = 3;
-          if (langMatch) {
-            lang = (langMatch[1] || '').toLowerCase();
-            afterFenceIndex = langMatch[0].length;
-          }
-
-          const closeIdx = rest.indexOf('\n```', afterFenceIndex);
-          const altCloseIdx = rest.indexOf('```', afterFenceIndex);
-          const endIdx = closeIdx !== -1 ? closeIdx : altCloseIdx;
-
-          if (endIdx !== -1) {
-            const codeContent = rest.substring(afterFenceIndex, endIdx).replace(/^\n/, '');
-            if (lang === 'json') {
-              try {
-                const obj = JSON.parse(codeContent);
-                segments.push({ type: 'json', content: JSON.stringify(obj, null, 2) });
-              } catch (e) {
-                segments.push({ type: 'json', content: codeContent });
-              }
-            } else {
-              segments.push({ type: 'code', content: codeContent });
+          // code block or inline code
+          const isCodeBlock = rest[first.index + 3] === '\n';
+          if (isCodeBlock) {
+            // code block: split by lines, preserve line breaks
+            const lines = rest.slice(0, first.index).split('\n');
+            for (const line of lines) {
+              if (line) segments.push({ type: 'text', content: line });
             }
-            const closingFenceIdx = rest.indexOf('```', afterFenceIndex);
-            if (closingFenceIdx !== -1) rest = rest.slice(closingFenceIdx + 3);
-            else rest = '';
+            segments.push({ type: 'code', content: rest.slice(first.index + 3, codeOpen !== -1 ? codeOpen : undefined) });
+            rest = rest.slice(codeOpen !== -1 ? codeOpen + 3 : first.index);
           } else {
-            const codeContent = rest.substring(afterFenceIndex).replace(/^\n/, '');
-            if (lang === 'json') {
-              try {
-                const obj = JSON.parse(codeContent);
-                segments.push({ type: 'json', content: JSON.stringify(obj, null, 2) });
-              } catch (e) {
-                segments.push({ type: 'json', content: codeContent });
-              }
-            } else {
-              segments.push({ type: 'code', content: codeContent });
-            }
-            rest = '';
+            // inline code: treat as text
+            segments.push({ type: 'text', content: rest.slice(0, first.index) });
+            segments.push({ type: 'code', content: rest.slice(first.index + 1, codeOpen !== -1 ? codeOpen : undefined) });
+            rest = rest.slice(codeOpen !== -1 ? codeOpen + 1 : first.index);
           }
         }
       }
 
       return segments;
-    },
-
-    downloadResult() {
-      // If structured finalResult, POST to /api/docx to generate docx; fallback to JSON download
-      if (this.finalResult && typeof this.finalResult === 'object') {
-        // send to backend and download
-        fetch('/api/docx', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(this.finalResult)
-        }).then(async res => {
-          if (!res.ok) {
-            const t = await res.text();
-            this.error = '下载失败: ' + t;
-            return;
-          }
-          const blob = await res.blob();
-          const cd = res.headers.get('content-disposition') || '';
-
-          // helper to parse Content-Disposition header robustly
-          const parseFilenameFromContentDisposition = (cdHeader) => {
-            if (!cdHeader) return null;
-            // try filename* (RFC5987) first (may be percent-encoded)
-            const filenameStarMatch = cdHeader.match(/filename\*=(?:[\w-]+''?)?([^;\n]+)/i);
-            if (filenameStarMatch && filenameStarMatch[1]) {
-              let raw = filenameStarMatch[1].trim();
-              // strip surrounding quotes (' or ")
-              raw = raw.replace(/^['"]|['"]$/g, '');
-              try {
-                return decodeURIComponent(raw);
-              } catch (e) {
-                return raw;
-              }
-            }
-
-            // fallback to filename=
-            const filenameMatch = cdHeader.match(/filename=([^;\n]+)/i);
-            if (filenameMatch && filenameMatch[1]) {
-              let raw = filenameMatch[1].trim();
-              raw = raw.replace(/^['"]|['"]$/g, '');
-              return raw;
-            }
-
-            return null;
-          };
-
-          let filename = parseFilenameFromContentDisposition(cd) || (this.finalResult.title || 'result') + '.docx';
-          // strip any path components just in case
-          filename = filename.split(/[\\\/]/).pop();
-           const url = URL.createObjectURL(blob);
-           const a = document.createElement('a');
-           a.href = url;
-           a.download = filename;
-           document.body.appendChild(a);
-           a.click();
-           a.remove();
-           URL.revokeObjectURL(url);
-         }).catch(e => this.error = String(e));
-         return;
-       }
-
-      const content = this.messages.filter(m => m.sender === 'bot').map(m => m.content).join('\n');
-      const blob = new Blob([content], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'result.txt';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+    }
+  },
+  watch: {
+    // watch currentConversationId and persist to localStorage
+    currentConversationId(newCid) {
+      try {
+        localStorage.setItem('conversation_id', newCid);
+      } catch (e) {}
     }
   }
 };
@@ -562,6 +555,8 @@ export default {
   --avatar-bg: linear-gradient(135deg,#0c0c0c 0%, #2b1f0a 100%);
   --avatar-shadow: 0 4px 12px rgba(0,0,0,0.15);
   --avatar-border: 1px solid rgba(255,255,255,0.04);
+  --border-color: rgba(255,255,255,0.06);
+  --error-color: #ff6b6b;
 }
 .app-shell.light {
   --sidebar-width: 260px;
@@ -583,6 +578,8 @@ export default {
   --avatar-bg: linear-gradient(135deg,#ffffff 0%, #eaf4ff 100%);
   --avatar-shadow: 0 4px 12px rgba(0,0,0,0.1);
   --avatar-border: 1px solid rgba(0,0,0,0.06);
+  --border-color: rgba(0,0,0,0.06);
+  --error-color: #d93025;
 }
 
 /* Mirror vars on the html element so documentElement.classList = 'dark'|'light' controls page colors */
@@ -650,6 +647,8 @@ html {
   --input-bg: rgba(255,255,255,0.02);
   --code-bg: #071017;
   --message-shadow: 0 6px 18px rgba(2,6,10,0.35);
+  --border-color: rgba(255,255,255,0.06);
+  --error-color: #ff6b6b;
 }
 
 * { box-sizing: border-box; }
@@ -854,4 +853,17 @@ html.dark ::-webkit-scrollbar { background: transparent; width: 10px; }
 }
 
 @media (max-width: 800px) { .two-cols { flex-direction: column; } }
+
+/* File list styles (keep them consistent with theme vars) */
+.added-list { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+.file-item { display:flex; align-items:center; gap:8px; background: rgba(255,255,255,0.02); padding:6px 8px; border-radius:8px; }
+.file-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.file-delete-btn { background:transparent; border:1px solid rgba(0,0,0,0.06); color:var(--muted); padding:4px 8px; border-radius:6px; cursor:pointer; }
+.app-shell.dark .file-item { background: rgba(255,255,255,0.02); }
+.app-shell.dark .file-delete-btn { background:transparent; border-color: rgba(255,255,255,0.06); color: var(--muted); }
+.app-shell.light .file-item { background: rgba(0,0,0,0.03); }
+.app-shell.light .file-delete-btn { background:transparent; border-color: rgba(0,0,0,0.06); color: var(--muted); }
+
+/* small helpers */
+.result-actions { display:flex; }
 </style>

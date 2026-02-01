@@ -5,6 +5,7 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
 from flask import Flask, request, jsonify
+from werkzeug.utils import secure_filename
 import os
 
 from dify import upload_file_to_dify
@@ -135,14 +136,23 @@ def upload_file():
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
 
-    filename = file.filename
+    # Preserve the original filename but sanitize it for filesystem
+    original_filename = file.filename
+    # Keep the original base name, but prevent path traversal and replace unsafe chars
+    basename = os.path.basename(original_filename)
+    filename = basename.replace(os.path.sep, '_')
+    if os.path.altsep:
+        filename = filename.replace(os.path.altsep, '_')
+    filename = filename.replace(':', '_')
     save_path = os.path.join(UPLOAD_FOLDER, filename)
     file.save(save_path)
 
+    # try to get user identifier from form (required by Dify upload API)
+    user = request.form.get('user', 'web-user')
+
     # Upload to Dify
-    upload_file_id = upload_file_to_dify(save_path)
+    upload_file_id = upload_file_to_dify(save_path, user=user)
     if not upload_file_id:
         return jsonify({'error': 'Failed to upload file to Dify'}), 500
 
-    return jsonify({'message': 'File uploaded successfully', 'file_path': save_path, 'upload_file_id': upload_file_id}), 200
-
+    return jsonify({'message': 'File uploaded successfully', 'original_filename': original_filename, 'file_path': save_path, 'upload_file_id': upload_file_id}), 200

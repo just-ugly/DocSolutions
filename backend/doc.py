@@ -5,7 +5,8 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
 from flask import Flask, request, jsonify
-from werkzeug.utils import secure_filename
+
+from chart import bar_chart, line_chart, pie_chart
 import os
 
 from dify import upload_file_to_dify
@@ -58,7 +59,7 @@ def create_docx(data: dict):
         content_p.paragraph_format.line_spacing = 1.5
         content_p.paragraph_format.space_after = Pt(12)
 
-        # ===== WARNING 块（可选）=====
+        # WARNING块
         if section.get("warning"):
             table = doc.add_table(rows=1, cols=1)
             table.autofit = True
@@ -90,7 +91,7 @@ def create_docx(data: dict):
             cell_p.paragraph_format.space_before = Pt(6)
             cell_p.paragraph_format.space_after = Pt(6)
 
-        # ===== ERROR 块（可选）=====
+        # ERROR 块
         if section.get("error"):
             table = doc.add_table(rows=1, cols=1)
             table.autofit = True
@@ -121,6 +122,33 @@ def create_docx(data: dict):
 
             cell_p.paragraph_format.space_before = Pt(6)
             cell_p.paragraph_format.space_after = Pt(6)
+
+        # CHART 块
+        if section.get("chart"):
+            for chart in section.get("chart", []):
+                if chart.get("type") == "bar":
+                    bar_title = chart.get("title")
+                    x_label = chart.get("x_label")
+                    y_label = chart.get("y_label")
+                    unit = chart.get("unit")
+                    data = chart.get("data")
+                    img_path = bar_chart(bar_title, x_label, y_label, unit, data)
+                    doc.add_picture(img_path, width=Inches(4.5))
+                if chart.get("type") == "line":
+                    line_title = chart.get("title")
+                    x_label = chart.get("x_label")
+                    y_label = chart.get("y_label")
+                    unit = chart.get("unit")
+                    data = chart.get("data")
+                    img_path = line_chart(line_title, x_label, y_label, unit, data)
+                    doc.add_picture(img_path, width=Inches(4.5))
+                if chart.get("type") == "pie":
+                    pie_title = chart.get("title")
+                    unit = chart.get("unit")
+                    data = chart.get("data")
+                    img_path = pie_chart(pie_title, unit, data)
+                    doc.add_picture(img_path, width=Inches(4.5))
+
 
     # ===== 保存 =====
     doc.save(output_path)

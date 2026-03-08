@@ -141,27 +141,28 @@ def api_docx():
         return jsonify({'error': str(e)}), 500
 
 
-# Endpoint to receive file uploads from frontend, save locally and upload to Dify
+# 从前端接受文件提交，并上传至 Dify
 @app.route('/api/upload', methods=['POST'])
 def api_upload():
     try:
         if 'file' not in request.files:
-            return jsonify({'error': 'No file part in the request'}), 400
+            return jsonify({'error': '[149]请求中未找到文件信息'}), 400
 
         file = request.files['file']
         if file.filename == '':
-            return jsonify({'error': 'No selected file'}), 400
+            return jsonify({'error': '[153]未选择文件'}), 400
 
         original_filename = file.filename
-        # preserve the original filename as much as possible while preventing path traversal
+        # 去掉路径，只留文件名
         basename = os.path.basename(original_filename)
-        # replace path separators and a couple problematic chars with underscores
+        # 替换危险字符
         filename = basename.replace(os.path.sep, '_')
         if os.path.altsep:
             filename = filename.replace(os.path.altsep, '_')
         filename = filename.replace(':', '_')
 
-        upload_dir = os.path.join(os.path.dirname(__file__), '..', 'backend', 'files')
+        # 保存文件至本地 (files/uploads)
+        upload_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'files', 'uploads')
         upload_dir = os.path.abspath(upload_dir)
         os.makedirs(upload_dir, exist_ok=True)
         save_path = os.path.join(upload_dir, filename)
@@ -169,7 +170,7 @@ def api_upload():
 
         user = request.form.get('user', 'human-user')
 
-        # upload to Dify and return id
+        # 进行上传 (dify.py)
         try:
             from dify import upload_file_to_dify
         except Exception as e:

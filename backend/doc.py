@@ -115,7 +115,7 @@ def create_docx(data: dict):
                 borders.append(border)
             tc_pr.append(borders)
 
-            # 内容（全部粗体）
+            # 内容
             run = cell_p.add_run("⛔ 禁止\n" + section["error"])
             run.bold = True
             run.font.size = Pt(12)

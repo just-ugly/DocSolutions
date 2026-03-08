@@ -194,3 +194,52 @@ def pie_chart(pie_title, unit, data):
     plt.close()
 
     return file_path
+
+def scatter_chart(scatter_title, x_label, y_label, unit_x, unit_y, data):
+    """
+    生成散点图并返回图片路径
+    图片保存在当前目录的 picture 文件夹中
+
+    :param data: [{"x": number, "y": number}, ...]
+    """
+
+    # ===== 数据校验 =====
+    if not isinstance(data, list) or len(data) == 0:
+        raise ValueError("scatter_chart: data 不能为空")
+
+    x_values = []
+    y_values = []
+
+    for item in data:
+        if "x" not in item or "y" not in item:
+            raise ValueError("scatter_chart: 数据结构错误")
+
+        x_values.append(float(item["x"]))
+        y_values.append(float(item["y"]))
+
+    # ===== 创建图表 =====
+    plt.figure(figsize=(8, 5))
+
+    plt.scatter(x_values, y_values)
+
+    xlabel = f"{x_label} ({unit_x})" if unit_x else x_label
+    ylabel = f"{y_label} ({unit_y})" if unit_y else y_label
+
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(scatter_title)
+
+    plt.tight_layout()
+
+    # ===== 创建 picture 文件夹 =====
+    picture_dir = os.path.join(os.getcwd(), "picture")
+    os.makedirs(picture_dir, exist_ok=True)
+
+    file_name = f"scatter_{uuid.uuid4().hex}.png"
+    file_path = os.path.join(picture_dir, file_name)
+
+    plt.savefig(file_path, dpi=300)
+    plt.close()
+
+    return file_path
+

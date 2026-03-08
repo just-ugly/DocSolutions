@@ -134,21 +134,20 @@ def dify_chatflow_stream_generator(question: str,
 
 def upload_file_to_dify(file_path, user: str = "unknown"):
     """
-    Upload a file to Dify and return the upload file id.
+    上传文件并返回文件ID
 
-    :param file_path: Path to the file to upload.
-    :param user: User identifier (required by Dify file upload API) - should match the user used in chat messages.
-    :return: upload_file_id (uuid string) if successful, None otherwise.
+    :param file_path: 待上传的文件地址.
+    :param user: 用户ID.
+    :return: 文件ID.
     """
     url = "https://api.dify.ai/v1/files/upload"
     API_KEY = os.environ.get("DIFY_API_KEY", "app-6nsFy8O8xGGivOFkT6kZJvzt")
 
     headers = {
         "Authorization": f"Bearer {API_KEY}"
-        # NOTE: Do NOT set Content-Type here; requests will set the multipart boundary for us.
     }
 
-    # Determine MIME type; prefer guessed type but fall back to common docx MIME
+    # 获取文件类型
     mime_type, _ = mimetypes.guess_type(file_path)
     if not mime_type:
         # common fallback for docx if guess_type didn't know it
@@ -159,9 +158,9 @@ def upload_file_to_dify(file_path, user: str = "unknown"):
         else:
             mime_type = 'application/octet-stream'
 
-    # Log what we're about to send (helps debugging 415 unsupported file type)
+    # 打印上传日志
     try:
-        print(f"Uploading file to Dify: {file_path}, mime={mime_type}, user={user}")
+        print(f"正在上传文件至Dify: {file_path}, mime={mime_type}, user={user}")
     except Exception:
         pass
 
@@ -178,14 +177,14 @@ def upload_file_to_dify(file_path, user: str = "unknown"):
     if response.status_code in (200, 201):
         try:
             data = response.json()
+            print("文档上传成功")
         except Exception:
             print("Upload succeeded but response is not valid JSON:", response.text)
             return None
-        # Dify may return 'id' or 'upload_file_id' - accept both for compatibility
-        print("Dify 文件ID:", data)
-        return data.get("id") or data.get("upload_file_id")
+        print("Dify 文件ID:", data.get("id"))
+        return data.get("id")
     else:
-        print(f"Failed to upload file to Dify: {response.status_code}, {response.text}")
+        print(f"上传失败: {response.status_code}, {response.text}")
         print("文件位置:", file_path)
         # 如果是415错误，尝试使用ASCII文件名重试
         if response.status_code == 415:

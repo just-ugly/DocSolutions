@@ -45,9 +45,15 @@
           <svg v-if="more_setting" class="more_setting_icon" @click="change_more_setting" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="16" height="16"><path d="M854.016 739.328l-313.344-309.248-313.344 309.248q-14.336 14.336-32.768 21.504t-37.376 7.168-36.864-7.168-32.256-21.504q-29.696-28.672-29.696-68.608t29.696-68.608l376.832-373.76q14.336-14.336 34.304-22.528t40.448-9.216 39.424 5.12 31.232 20.48l382.976 379.904q28.672 28.672 28.672 68.608t-28.672 68.608q-14.336 14.336-32.768 21.504t-37.376 7.168-36.864-7.168-32.256-21.504z" ></path></svg>
           <svg v-else class="more_setting_icon" @click="change_more_setting" viewBox="0 0 1026 1024" xmlns="http://www.w3.org/2000/svg" width="16" height="16"><path d="M857.088 224.256q28.672-28.672 69.12-28.672t69.12 28.672q29.696 28.672 29.696 68.608t-29.696 68.608l-382.976 380.928q-12.288 14.336-30.72 19.968t-38.912 4.608-40.448-8.704-34.304-22.016l-376.832-374.784q-29.696-28.672-29.696-68.608t29.696-68.608q14.336-14.336 32.256-21.504t36.864-7.168 37.376 7.168 32.768 21.504l313.344 309.248z"></path></svg>
           <div class="sending_area">
-            <button class="sending_button" @click="send(false)">发送</button>
-            <button class="generate_button" @click="send(true)">生成</button>
-          </div>
+  <button class="sending_button" @click="send(false)" :disabled="loading">
+    {{ loading ? '发送中...' : '发送' }}
+  </button>
+  <button class="generate_button" @click="send(true)" :disabled="loading">
+    {{ loading ? '生成中...' : '生成' }}
+  </button>
+  <!-- 新增取消按钮 -->
+  <button class="cancel_button" @click="cancelRequest()" v-if="loading">取消</button>
+</div>
         </div>
       </div>
 
@@ -100,9 +106,13 @@
         </div>
         <!-- 聊天记录 -->
         <div v-else class="chat_list">
-          <div v-for="(message, index) in messages" :key="index">
-          </div>
-        </div>
+  <div v-for="(message, index) in messages" :key="index" :class="`msg_item ${message.role}`">
+    <!-- 加载提示（机器人思考中） -->
+    <span v-if="message.thinking" class="thinking_text">{{ message.thinking }}</span>
+    <!-- 消息内容 -->
+    <div class="msg_content">{{ message.content }}</div>
+  </div>
+</div>
       </div>
 
     </main>
@@ -232,23 +242,26 @@ export default {
       const q = this.question;
       if (!q || this.loading) return;
 
+      this.welcome=false;
+
       this.question = '';
       this.answer = null;
 
       // 添加玩家问题和空返回
       this.messages.push({role: 'user', content: q});
-      this.messages.push({role: 'bot', content: '', thinking: ''});
+      this.messages.push({role: 'bot', content: '', thinking: '正在思考中...'});
       const botIdx = this.messages.length - 1;
 
       // 清除之前中断导致的空消息
-      for (let i = this.messages.length; i >= 0; i--) {
+      for (let i = this.messages.length-1; i >= 0; i--) {
         if (this.messages[i].role === 'bot' && (!this.messages[i].content || this.messages[i].content.trim() === '')) {
           this.messages.splice(i, 1);
         } else break;
       }
 
+      //标记加载状态
       this.loading = true;
-      // 创建新的 AbortController, 便于取消请求
+      // 创建新的 AbortController, 便于取消请求（用户点取消按钮)
       const controller = new AbortController();
       this.currentAbortController = controller;
 
@@ -258,9 +271,9 @@ export default {
         this.uploadPromises = [];
       }
 
-      // 构建payload
+      // 构建payload(请求参数)
       const payload = {
-        question: this.question,
+        question: q,
         stream: true,
         docx_create: create_docx,
         menu: this.menu,
@@ -269,7 +282,80 @@ export default {
         file_num: this.file_num,
         style: this.style,
         facing: this.facing,
-        docFiles: this.docFiles,
+        docFiles: this.docFiles,}；
+
+      //发送请求
+      const response = await fetch('/api/ask', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal, // 关联AbortController，支持取消请求
+    });
+
+    // 校验请求是否成功
+    if (!response.ok) {
+      throw new Error(`请求失败：${response.status} ${response.statusText}`);
+    }
+
+    //  处理流式响应（核心：逐字渲染回答，提升用户体验）
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let botContent = ''; // 拼接机器人回答
+
+    while (true) {
+      // 检查是否有取消请求的信号
+      if (controller.signal.aborted) {
+        throw new Error('请求已取消');
+      }
+
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      // 解码流式数据并拼接（根据后端返回格式调整，比如JSON/纯文本）
+      const chunk = decoder.decode(value, { stream: true });
+      botContent += chunk;
+
+      //  实时更新页面：把拼接的内容赋值给bot占位消息
+      this.messages[botIdx].content = botContent;
+      this.messages[botIdx].thinking = ''; // 清空加载提示
+    }
+
+    //  最终确认：保存完整回答（可选）
+    this.answer = botContent;
+
+    // 如果需要生成docx，这里可补充下载逻辑
+    if (create_docx) {
+      // 示例：调用下载接口
+      // await this.downloadDocx(botContent);
+    }
+
+  }
+
+  //  最终清理：无论成功/失败，都重置加载状态和AbortController
+    this.loading = false;
+    // 只有当前controller和保存的一致时才清空（避免取消其他请求）
+    if (this.currentAbortController === controller) {
+      this.currentAbortController = null;
+    }
+  }
+},
+
+// 可选：添加取消请求的方法（比如用户点击“取消”按钮调用）
+cancelRequest() {
+  if (this.currentAbortController) {
+    this.currentAbortController.abort(); // 触发请求取消
+    this.currentAbortController = null;
+    this.loading = false;
+    // 找到最后一个bot消息，更新提示
+    const lastBotMsg = this.messages.findLast(msg => msg.role === 'bot');
+    if (lastBotMsg) {
+      lastBotMsg.content = '请求已取消';
+      lastBotMsg.thinking = '';
+    }
+  }
+}
       }
     }
   },

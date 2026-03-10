@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, send_from_directory, Response, send_file
 import os
 import sys
+import uuid
 
 # ensure backend folder is on sys.path so runtime imports like `from dify import ...` work
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backend')))
@@ -65,12 +66,28 @@ def api_ask():
         data = request.get_json() or {}
         question = (data.get('question') or '').strip()
         stream = bool(data.get('stream', True))
+        docx_create = bool(data.get('docx_create', False))
+        menu = data.get('menu', '').strip()
+        outline = data.get('outline', '').strip()
+        example = data.get('example', '').strip()
+        file_num = int(data.get('file_num', 1000))
+        style = data.get('style', '不指定')
+        facing = data.get('facing', '不指定')
+        docFiles = data.get('docFiles', [])
+        user = data.get('user', 'human-user')
+        conversation_id = data.get('conversation_id', '') or str(uuid.uuid4())
 
         if not question:
             return jsonify({'error': '问题不能为空'}), 400
 
         # If client requests streaming, try to use the generator and stream plain text chunks.
         if stream:
+
+            # 生成唯一请求ID，用于取消
+            request_id = str(uuid.uuid4())
+            set_cancel_flag(request_id, False)
+
+
             def generate():
                 try:
                     try:
@@ -114,6 +131,23 @@ def api_ask():
 
     except Exception as e:
         print(f"api_ask error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# 新增：取消请求接口
+@app.route('/api/cancel', methods=['POST'])
+def api_cancel():
+    """取消正在进行的请求"""
+    try:
+        data = request.get_json() or {}
+        request_id = data.get('request_id')
+        if not request_id:
+            return jsonify({'error': 'request_id不能为空'}), 400
+
+        set_cancel_flag(request_id, True)
+        return jsonify({'msg': '取消请求已接收', 'request_id': request_id}), 200
+    except Exception as e:
+        print(f"api_cancel error: {e}")
         return jsonify({'error': str(e)}), 500
 
 

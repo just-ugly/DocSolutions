@@ -11,11 +11,11 @@ def dify_chatflow_stream_generator(question: str,
                                    conversation_id: str = "",
                                    docx_create: bool = False,
                                    style: str = "不指定",
+                                   facing: str = "不指定",
                                    file_num: int = None,
                                    menu: str = None,
                                    outline: str = None,
                                    example: str = None,
-                                   relevant_documents: list = None,
                                    files: list = None,
                                    ):
     """
@@ -26,12 +26,12 @@ def dify_chatflow_stream_generator(question: str,
 
     如果发生错误，会生成类似 '{"error": ...}' 的 JSON 字符串。
 
-    :param relevant_documents: 上传的文档
     :param question: 用户的问题
     :param user: 用户唯一标识
     :param conversation_id: 对话 ID，可选
     :param docx_create: 是否创建 docx 文档（必选）
     :param style: 文档风格（可选）
+    :param facing: 面向对象 （可选）
     :param file_num: 文件字数
     :param menu: 目录结构
     :param outline: 大纲
@@ -50,15 +50,13 @@ def dify_chatflow_stream_generator(question: str,
     inputs = {
         "docx_create": docx_create,
         "style": style,
+        "facing": facing,
         "menu": menu or "",
         "outline": outline or "",
         "example": example or "",
         "file_num": file_num if file_num is not None else 1000
     }
-    if relevant_documents is not None:
-        inputs["relevant_documents"] = relevant_documents
-    else:
-        inputs["relevant_documents"] = []
+
     payload = {
         "inputs": inputs,
         "query": question,
@@ -74,7 +72,7 @@ def dify_chatflow_stream_generator(question: str,
     try:
         response = requests.post(URL, headers=headers, json=payload, stream=True)
     except Exception as e:
-        yield json.dumps({"error": str(e)})
+        yield json.dumps({"出现错误": str(e)})
         return
 
     full_answer = ""
@@ -82,7 +80,6 @@ def dify_chatflow_stream_generator(question: str,
 
     try:
         for line in response.iter_lines():
-            # print(line)
             if not line:
                 continue
             if not line.startswith(b"data: "):
@@ -107,13 +104,14 @@ def dify_chatflow_stream_generator(question: str,
                 break
             elif event == "error":
                 # yield error payload as JSON string and stop
-                yield json.dumps({"error": data})
+                yield json.dumps({"出现错误": data})
                 return
     except Exception as e:
-        yield json.dumps({"error": str(e)})
+        yield json.dumps({"出现错误": str(e)})
         return
 
-    # Post-process the accumulated full_answer similar to other helpers
+
+    # 对累计的 full_answer 进行后处理，类似于其他助手
     after_think = full_answer.split("</think>")[-1].strip()
 
     # strip ``` fences if present

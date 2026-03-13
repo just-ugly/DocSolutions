@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify, send_from_directory, Response, send_file
 import os
 import sys
-import uuid
 
 # ensure backend folder is on sys.path so runtime imports like `from dify import ...` work
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backend')))
@@ -64,90 +63,57 @@ def api_ask():
     """Accept JSON {question: str, stream: bool} and stream text chunks when possible."""
     try:
         data = request.get_json() or {}
-        question = (data.get('question') or '').strip()
-        stream = bool(data.get('stream', True))
-        docx_create = bool(data.get('docx_create', False))
-        menu = data.get('menu', '').strip()
-        outline = data.get('outline', '').strip()
-        example = data.get('example', '').strip()
-        file_num = int(data.get('file_num', 1000))
-        style = data.get('style', '不指定')
-        facing = data.get('facing', '不指定')
-        docFiles = data.get('docFiles', [])
-        user = data.get('user', 'human-user')
-        conversation_id = data.get('conversation_id', '') or str(uuid.uuid4())
+        question = data.get('question').strip()
 
         if not question:
             return jsonify({'error': '问题不能为空'}), 400
 
-        # If client requests streaming, try to use the generator and stream plain text chunks.
-        if stream:
-
-            # 生成唯一请求ID，用于取消
-            request_id = str(uuid.uuid4())
-            set_cancel_flag(request_id, False)
-
-
-            def generate():
-                try:
-                    try:
-                        import importlib
-                        mod = importlib.import_module('dify')
-                        # prefer the new chatflow stream generator that supports conversation_id and user
-                        gen = getattr(mod, 'dify_chatflow_stream_generator')
-                    except Exception as e:
-                        # yield a plain text error line so frontend can show it
-                        yield 'ERROR: 后端模块未找到\n'
-                        return
-
-                    # prepare parameters from incoming request (optional fields)
-                    user = data.get('user', 'human-user')
-                    conversation_id = data.get('conversation_id', '') or ''
-                    docx_create = bool(data.get('docx_create', False))
-                    files = data.get('files') or []
-                    # call the chatflow stream generator with the parameters, including files if provided
-                    for chunk in gen(question, user=user, conversation_id=conversation_id, docx_create=docx_create, files=files):
-                        # Ensure chunk is str
-                        if isinstance(chunk, bytes):
-                            chunk = chunk.decode('utf-8', errors='ignore')
-                        # Yield each chunk followed by a newline separator to simplify client parsing
-                        yield str(chunk) + '\n'
-                except GeneratorExit:
-                    # client disconnected
-                    print('Client disconnected during streaming')
-                except Exception as e:
-                    yield ('ERROR: ' + str(e) + '\n')
-
-            return Response(generate(), mimetype='text/plain; charset=utf-8')
-        else:
-            # fallback: blocking request
+        # 生成请求
+        def generate():
             try:
-                from dify import dify_request
+                import importlib
+                mod = importlib.import_module('dify')
+                gen = getattr(mod, 'dify_chatflow_stream_generator')
             except Exception as e:
-                return jsonify({'error': '后端模块未找到'}), 500
+                # 输出错误
+                yield 'ERROR: 后端模块未找到'
+                return
 
-            result = dify_request(question, stream=False)
-            return jsonify({'result': result})
+            # 准备参数
+            user = data.get('user', 'default')
+            conversation_id = data.get('conversation_id', '')
+            docx_create = bool(data.get('docx_create', False))
+            menu = data.get('menu', '')
+            outline = data.get('outline', '')
+            example = data.get('example', '')
+            file_num = data.get('file_num', 1000)
+            style = data.get('style', '不指定')
+            facing = data.get('facing', '不指定')
+            files = list(data.get('files') or [])
+
+            # 使用参数调用聊天流程流生成器，包括提供的文件id
+            for chunk in gen(
+                    question=question,
+                    user=user,
+                    conversation_id=conversation_id,
+                    docx_create=docx_create,
+                    style=style,
+                    facing=facing,
+                    menu=menu,
+                    outline=outline,
+                    example=example,
+                    file_num=file_num,
+                    files=files
+            ):
+                if isinstance(chunk, bytes):
+                    chunk = chunk.decode('utf-8', errors='ignore')
+                yield str(chunk)
+
+        return Response(generate(), mimetype='text/plain; charset=utf-8')
+
 
     except Exception as e:
         print(f"api_ask error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-# 新增：取消请求接口
-@app.route('/api/cancel', methods=['POST'])
-def api_cancel():
-    """取消正在进行的请求"""
-    try:
-        data = request.get_json() or {}
-        request_id = data.get('request_id')
-        if not request_id:
-            return jsonify({'error': 'request_id不能为空'}), 400
-
-        set_cancel_flag(request_id, True)
-        return jsonify({'msg': '取消请求已接收', 'request_id': request_id}), 200
-    except Exception as e:
-        print(f"api_cancel error: {e}")
         return jsonify({'error': str(e)}), 500
 
 

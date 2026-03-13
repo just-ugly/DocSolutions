@@ -10,6 +10,7 @@ def dify_chatflow_stream_generator(question: str,
                                    user: str,
                                    conversation_id: str = "",
                                    docx_create: bool = False,
+                                   self_table: bool = False,
                                    style: str = "不指定",
                                    facing: str = "不指定",
                                    file_num: int = None,
@@ -30,6 +31,7 @@ def dify_chatflow_stream_generator(question: str,
     :param user: 用户唯一标识
     :param conversation_id: 对话 ID，可选
     :param docx_create: 是否创建 docx 文档（必选）
+    :param self_table: 是否自行生成目录和大纲
     :param style: 文档风格（可选）
     :param facing: 面向对象 （可选）
     :param file_num: 文件字数
@@ -49,6 +51,7 @@ def dify_chatflow_stream_generator(question: str,
 
     inputs = {
         "docx_create": docx_create,
+        "self_table": self_table,
         "style": style,
         "facing": facing,
         "menu": menu or "",

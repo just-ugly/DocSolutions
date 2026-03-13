@@ -71,6 +71,7 @@
             <div class="drop_zone" @dragover.prevent="onDragOver" @dragleave.prevent="onDragLeave" @drop.prevent="onDrop" @click="triggerFileInput">
               <div v-if="no_file" class="side_text">点击或拖动文件至此以上传</div>
             </div>
+            <button class="table_creating_button" @click="send(false, true)">帮我填写</button>
           </div>
         </Transition>
       </div>
@@ -87,8 +88,8 @@
             <svg v-if="more_setting" class="more_setting_icon" @click="change_more_setting" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="16" height="16"><path d="M854.016 739.328l-313.344-309.248-313.344 309.248q-14.336 14.336-32.768 21.504t-37.376 7.168-36.864-7.168-32.256-21.504q-29.696-28.672-29.696-68.608t29.696-68.608l376.832-373.76q14.336-14.336 34.304-22.528t40.448-9.216 39.424 5.12 31.232 20.48l382.976 379.904q28.672 28.672 28.672 68.608t-28.672 68.608q-14.336 14.336-32.768 21.504t-37.376 7.168-36.864-7.168-32.256-21.504z" ></path></svg>
             <svg v-else class="more_setting_icon" @click="change_more_setting" viewBox="0 0 1026 1024" xmlns="http://www.w3.org/2000/svg" width="16" height="16"><path d="M857.088 224.256q28.672-28.672 69.12-28.672t69.12 28.672q29.696 28.672 29.696 68.608t-29.696 68.608l-382.976 380.928q-12.288 14.336-30.72 19.968t-38.912 4.608-40.448-8.704-34.304-22.016l-376.832-374.784q-29.696-28.672-29.696-68.608t29.696-68.608q14.336-14.336 32.256-21.504t36.864-7.168 37.376 7.168 32.768 21.504l313.344 309.248z"></path></svg>
             <div class="sending_area">
-              <button v-if="!loading" class="sending_button" @click="send(false)" :disabled="loading">发送</button>
-              <button v-if="!loading" class="generate_button" @click="send(true)" :disabled="loading">生成</button>
+              <button v-if="!loading" class="sending_button" @click="send(false, false)" :disabled="loading">发送</button>
+              <button v-if="!loading" class="generate_button" @click="send(true, false)" :disabled="loading">生成</button>
               <!-- 新增取消按钮 -->
               <button v-else class="sending_button" @click="cancelRequest()" v-if="loading">取消</button>
             </div>
@@ -106,12 +107,28 @@
         <div v-else class="chat_container">
           <div v-for="(message, index) in messages" :key="index" :class="['msg_item', message.role]">
             <!-- 消息内容 -->
-            <div v-if="message.role === 'user'" class="user_content">{{ message.content }}</div>
-            <div
-              v-if="message.role === 'bot'"
-              class="bot_content"
-              v-html="renderMarkdown(message.content)">
+            <div v-if="message.role === 'user'" class="user_content_container">
+              <div class="user_content">{{ message.content }}</div>
+              <div class="tools_user">
+                <svg class="chat_icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="16" height="16"><path d="M890.9 325.4c0.4-9.9-3.2-19.8-10.5-27l-2.1-2.1c-0.9-1.1-1.9-2.2-3-3.2L662.5 80.5l-0.1-0.1-5.1-5.1c-7.7-7.7-18.4-11.4-28.9-10.4-1.3-0.1-2.7-0.2-4-0.2H320.9c-29.8 0-54 24.2-54 54v662.9c0 29.8 24.2 54 54 54h516.3c29.8 0 54-24.2 54-54V331.3c0-2-0.1-3.9-0.3-5.9zM768 287.8H667.8V187.6L768 287.8zM338.9 763.6V136.7h256.9v187.1c0 19.9 16.1 36 36 36h187.4v403.8H338.9z"></path><path d="M724.5 887.3H208.2V224.4c0-19.9-16.1-36-36-36s-36 16.1-36 36v680.9c0 29.8 24.2 54 54 54h534.3c19.9 0 36-16.1 36-36s-16.1-36-36-36z"></path></svg>
+              </div>
             </div>
+
+            <div v-if="message.role === 'bot'" class="bot_content_container">
+              <div class="bot_content" v-html="renderMarkdown(message.content)"></div>
+              <div class="tools_bot" v-show="message.thinking !== '正在思考中...'">
+                <svg class="chat_icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="16" height="16"><path d="M890.9 325.4c0.4-9.9-3.2-19.8-10.5-27l-2.1-2.1c-0.9-1.1-1.9-2.2-3-3.2L662.5 80.5l-0.1-0.1-5.1-5.1c-7.7-7.7-18.4-11.4-28.9-10.4-1.3-0.1-2.7-0.2-4-0.2H320.9c-29.8 0-54 24.2-54 54v662.9c0 29.8 24.2 54 54 54h516.3c29.8 0 54-24.2 54-54V331.3c0-2-0.1-3.9-0.3-5.9zM768 287.8H667.8V187.6L768 287.8zM338.9 763.6V136.7h256.9v187.1c0 19.9 16.1 36 36 36h187.4v403.8H338.9z"></path><path d="M724.5 887.3H208.2V224.4c0-19.9-16.1-36-36-36s-36 16.1-36 36v680.9c0 29.8 24.2 54 54 54h534.3c19.9 0 36-16.1 36-36s-16.1-36-36-36z"></path></svg>
+              </div>
+            </div>
+
+            <div v-if="message.role === 'doc'" class="doc_content_container">
+              <div class="doc_content" v-html="renderMarkdown(message.content)"></div>
+              <div class="tools_doc" v-show="message.thinking !== '正在思考中...'">
+                <svg class="chat_icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="16" height="16"><path d="M890.9 325.4c0.4-9.9-3.2-19.8-10.5-27l-2.1-2.1c-0.9-1.1-1.9-2.2-3-3.2L662.5 80.5l-0.1-0.1-5.1-5.1c-7.7-7.7-18.4-11.4-28.9-10.4-1.3-0.1-2.7-0.2-4-0.2H320.9c-29.8 0-54 24.2-54 54v662.9c0 29.8 24.2 54 54 54h516.3c29.8 0 54-24.2 54-54V331.3c0-2-0.1-3.9-0.3-5.9zM768 287.8H667.8V187.6L768 287.8zM338.9 763.6V136.7h256.9v187.1c0 19.9 16.1 36 36 36h187.4v403.8H338.9z"></path><path d="M724.5 887.3H208.2V224.4c0-19.9-16.1-36-36-36s-36 16.1-36 36v680.9c0 29.8 24.2 54 54 54h534.3c19.9 0 36-16.1 36-36s-16.1-36-36-36z"></path></svg>
+                <svg class="chat_icon" @click="downloadDocFromMessage(message.content)" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="16" height="16"><path d="M858.440565 801.267941H165.559435c-31.636464 0-57.598227 25.961762-57.598227 57.598227S133.92297 916.464395 165.559435 916.464395h692.88113c31.636464 0 57.598227-25.961762 57.598227-57.598227 0-31.778332-25.819895-57.598227-57.598227-57.598227z m-76.182876-405.173732H656.846772v-234.081463c0-30.075921-24.401219-54.47714-54.477141-54.477141H422.339706c-30.075921 0-54.47714 24.401219-54.47714 54.477141v234.081463H242.593516c-24.117484 0-36.743696 28.657246-20.28706 46.532557l269.832087 292.105293c10.923802 11.775007 29.650319 11.775007 40.715987 0L802.544749 442.626766c16.314769-17.875312 3.830424-46.532557-20.28706-46.532557z m0 0"></path></svg>
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
@@ -171,6 +188,7 @@ export default {
       error: null,
       /* 聊天信息 */
       messages: [],
+      docGenerating: {},
       conversation_id: '',
       uploads: [],
       ready: null,
@@ -305,7 +323,7 @@ export default {
     },
 
     // 发送消息
-    async send(create_docx = false) {
+    async send(create_docx = false, self_table = false) {
       const q = this.question;
       if (!q || this.loading) return;
 
@@ -323,7 +341,11 @@ export default {
 
       // 添加玩家问题和空返回
       this.messages.push({role: 'user', content: q});
-      this.messages.push({role: 'bot', content: '', thinking: '正在思考中...'});
+      if (create_docx) {
+        this.messages.push({role: 'doc', content: '', thinking: '正在思考中...'});
+      } else {
+        this.messages.push({role: 'bot', content: '', thinking: '正在思考中...'});
+      }
       const botIdx = this.messages.length - 1;
 
       //标记加载状态
@@ -345,6 +367,7 @@ export default {
         question: q,
         stream: true,
         docx_create: create_docx,
+        self_table: self_table,
         menu: this.menu,
         outline: this.outline,
         example: this.example,
@@ -404,12 +427,6 @@ export default {
       //  最终确认：保存完整回答（可选）
       this.answer = botContent;
 
-      // 如果需要生成docx，这里可补充下载逻辑
-      if (create_docx) {
-        // 示例：调用下载接口
-        // await this.downloadDocx(botContent);
-      }
-
       // 最终清理：无论成功/失败，都重置加载状态和AbortController
       this.loading = false;
       // 只有当前controller和保存的一致时才清空（避免取消其他请求）
@@ -433,6 +450,104 @@ export default {
           lastBotMsg.thinking = '';
         }
       }
+    },
+    // 从 doc 消息内容生成并下载文档
+    async downloadDocFromMessage(content) {
+      if (!content) {
+        console.error('文档内容为空')
+        return
+      }
+
+      try {
+        // 步骤1：解析 JSON
+        let docData
+        try {
+          docData = JSON.parse(content)
+        } catch (e) {
+          // 如果直接解析失败，尝试提取 JSON 部分（处理 markdown 代码块等情况）
+          const jsonMatch = content.match(/```json\n?([\s\S]*?)\n?```/) ||
+                           content.match(/```\n?([\s\S]*?)\n?```/) ||
+                           content.match(/\{[\s\S]*\}/)
+          if (jsonMatch) {
+            docData = JSON.parse(jsonMatch[1] || jsonMatch[0])
+          } else {
+            throw new Error('无法解析文档 JSON')
+          }
+        }
+
+        console.log('解析的文档数据:', docData)
+
+        // 步骤2：调用后端生成文档（参考 test.vue 的 downloadResult）
+        const res = await fetch('/api/docx', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(docData)
+        })
+
+        if (!res.ok) {
+          const ct = (res.headers.get('content-type') || '').toLowerCase()
+          if (ct.includes('application/json')) {
+            const j = await res.json()
+            throw new Error(j.error || j.message || '生成文档失败')
+          }
+          const txt = await res.text()
+          throw new Error('生成文档失败: ' + txt)
+        }
+
+        // 步骤3：处理下载（参考 test.vue 的逻辑）
+        const contentType = (res.headers.get('content-type') || '').toLowerCase()
+
+        if (contentType.includes('application/json')) {
+          // 后端返回 JSON（包含下载链接）
+          const j = await res.json()
+          if (j.error) throw new Error(j.error)
+
+          const maybeUrl = j.download_url || j.file_path || j.url || null
+          if (maybeUrl) {
+            // 有下载链接，再次请求获取文件
+            const r2 = await fetch(maybeUrl.startsWith('http') ? maybeUrl :
+                                 maybeUrl.startsWith('/') ? maybeUrl :
+                                 `/api/docx?path=${encodeURIComponent(maybeUrl)}`)
+            if (!r2.ok) throw new Error('下载中转失败')
+
+            const blob2 = await r2.blob()
+            const disposition2 = r2.headers.get('content-disposition') || ''
+            let filename2 = j.filename || docData.filename || docData.name || 'document.docx'
+            const m2 = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(disposition2)
+            if (m2) filename2 = decodeURIComponent(m2[1] || m2[2])
+
+            this.triggerDownload(blob2, filename2)
+          } else {
+            throw new Error('后端未返回文件链接')
+          }
+        } else {
+          // 直接返回文件流
+          const blob = await res.blob()
+          const disposition = res.headers.get('content-disposition') || ''
+          let filename = docData.filename || docData.name || 'document.docx'
+          const m = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(disposition)
+          if (m) filename = decodeURIComponent(m[1] || m[2])
+
+          this.triggerDownload(blob, filename)
+        }
+
+      } catch (err) {
+        console.error('下载文档失败:', err)
+        alert('下载失败: ' + (err.message || '未知错误'))
+      }
+    },
+
+    // 辅助方法：触发浏览器下载
+    triggerDownload(blob, filename) {
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      console.log('已下载:', filename)
     }
   }
 }
@@ -468,8 +583,9 @@ export default {
   --bottom_icon: #020202;
   --box_shadow: 0 0 10px rgba(0, 0, 0, 0.1);
   --ask_words: #000000;
-  --sending_button: #E3EFFD;
+  --sending_button: #eaf4ff;
   --generate_button: #FDDEA8;
+  --table_creating_button: #eaf4ff;
   --setting_text: #020202;
   --setting_textarea_border: #e5f3ff;
   --setting_textarea_background: #f7fcff;
@@ -488,6 +604,7 @@ export default {
   --ask_words: #ffffff;
   --sending_button: #212121;
   --generate_button: #FDDEA8;
+  --table_creating_button: #151515;
   --setting_text: #c4c4c4;
   --setting_textarea_border: #383838;
   --setting_textarea_background: #212121;
@@ -604,6 +721,12 @@ export default {
   fill: var(--bottom_icon);
   padding-left: 5px;
   transition: all 0.1s ease;
+  cursor: pointer;
+}
+.chat_icon {
+  fill: var(--bottom_icon);
+  transition: all 0.1s ease;
+  cursor: pointer;
 }
 
 /* 主界面主题 */
@@ -654,6 +777,7 @@ export default {
   max-height: 180px;
   height: auto;
   margin: 0 0 10px 0;
+  padding: 2px 2px 0 2px;
   background: none;
   border: none;
   overflow: auto;
@@ -694,8 +818,8 @@ export default {
   gap: 10px;
 }
 .sending_button {
-  width: 100px;
-  height: 50px;
+  width: 80px;
+  height: 40px;
   background: var(--sending_button);
   border: none;
   border-radius: 8px;
@@ -707,8 +831,8 @@ export default {
   transition: all 0.1s ease;
 }
 .generate_button {
-  width: 100px;
-  height: 50px;
+  width: 80px;
+  height: 40px;
   background: var(--generate_button);
   border: none;
   border-radius: 8px;
@@ -719,12 +843,26 @@ export default {
   cursor: pointer;
   transition: all 0.1s ease;
 }
+.table_creating_button {
+  width: 100px;
+  height: 40px;
+  background: var(--table_creating_button);
+  border: none;
+  border-radius: 8px;
+
+  font-size: 16px;
+  font-family: "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: var(--ask_words);
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
 .setting_textarea {
   width: 100%;
   min-height: 30px;
   max-height: 150px;
   height: auto;
   margin: 0 0 20px 0;
+  padding: 2px 2px 2px 2px;
   background: var(--setting_textarea_background);
   border: 1px solid var(--setting_textarea_border);
   border-radius: 8px;
@@ -779,6 +917,7 @@ export default {
 .drop_zone {
   min-height: 90px;
   max-height: 180px;
+  margin-bottom: 15px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -821,8 +960,15 @@ export default {
   overflow: auto;
   scrollbar-width: none;
 }
+.user_content_container {
+  width: 60%;
+  margin: 0 0 20px auto;
+
+  display: flex;
+  flex-direction: column;
+}
 .user_content {
-  max-width: 60%;
+  max-width: 100%;
   margin-left: auto;
 
   color: var(--ask_words);
@@ -834,18 +980,82 @@ export default {
   white-space: pre-wrap;
   line-height: 1.6;
 }
+.tools_user {
+  margin: 7px 0 0 auto;
+
+  display: flex;
+  flex-direction: row;
+  gap: 7px;
+
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.1s ease;
+}
+.bot_content_container {
+  width: 100%;
+  margin: 0 auto 20px 0;
+
+  display: flex;
+  flex-direction: column;
+}
 .bot_content {
-  max-width: 70%;
+  max-width: 100%;
   margin-right: auto;
 
   color: var(--ask_words);
-  background: var(--add_chat);
-  border: 1px solid var(--side_border);
-  border-radius: 12px 12px 12px 2px;
+  background: none;
+  border: none;
 
   padding: 12px 16px;
   line-height: 1.6;
   word-break: break-word;
+}
+.tools_bot {
+  margin: 7px auto 0 0;
+
+  display: flex;
+  flex-direction: row;
+  gap: 7px;
+
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.1s ease;
+}
+.doc_content_container {
+  width: 100%;
+  margin: 0 auto 20px 0;
+
+  display: flex;
+  flex-direction: column;
+}
+.doc_content {
+  max-width: 100%;
+  margin-right: auto;
+
+  color: var(--ask_words);
+  background: none;
+  border: none;
+
+  padding: 12px 16px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+.tools_doc {
+  margin: 7px auto 0 0;
+
+  display: flex;
+  flex-direction: row;
+  gap: 7px;
+
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.1s ease;
+}
+.user_content_container:hover .tools_user,
+.bot_content_container:hover .tools_bot,
+.doc_content_container:hover .tools_doc {
+  opacity: 1;
+  visibility: visible;
 }
 .bot_content p {
   margin: 6px 0;

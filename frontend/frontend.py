@@ -83,6 +83,7 @@ def api_ask():
             user = data.get('user', 'default')
             conversation_id = data.get('conversation_id', '')
             docx_create = bool(data.get('docx_create', False))
+            self_table = bool(data.get('self_table', False))
             menu = data.get('menu', '')
             outline = data.get('outline', '')
             example = data.get('example', '')
@@ -93,17 +94,18 @@ def api_ask():
 
             # 使用参数调用聊天流程流生成器，包括提供的文件id
             for chunk in gen(
-                    question=question,
-                    user=user,
-                    conversation_id=conversation_id,
-                    docx_create=docx_create,
-                    style=style,
-                    facing=facing,
-                    menu=menu,
-                    outline=outline,
-                    example=example,
-                    file_num=file_num,
-                    files=files
+                question=question,
+                user=user,
+                conversation_id=conversation_id,
+                docx_create=docx_create,
+                self_table=self_table,
+                style=style,
+                facing=facing,
+                menu=menu,
+                outline=outline,
+                example=example,
+                file_num=file_num,
+                files=files
             ):
                 if isinstance(chunk, bytes):
                     chunk = chunk.decode('utf-8', errors='ignore')
